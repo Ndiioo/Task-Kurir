@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Menu, X, LayoutDashboard, ClipboardList, CalendarCheck, Users, Settings, LogOut, RefreshCw } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Menu, X, LayoutDashboard, ClipboardList, CalendarCheck, Users, Settings, LogOut, RefreshCw, Camera, User as UserIcon } from 'lucide-react';
 import RunningFeed from './RunningFeed';
 import { Role, User } from '../types';
 
@@ -10,13 +10,15 @@ interface LayoutProps {
   onSync: () => void;
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
+  onAvatarChange?: (userId: string, file: File) => void;
+  hasChangedAvatar?: boolean;
   children: React.ReactNode;
 }
 
-const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, setActiveMenu, children }) => {
+const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, setActiveMenu, onAvatarChange, hasChangedAvatar, children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper to identify Operator-like roles based on requirements
   const isOperatorType = (role: string) => {
     const r = role.toLowerCase();
     return r.includes('operator') || 
@@ -24,6 +26,19 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
            r.includes('shift worker') || 
            r.includes('admin') || 
            r.includes('lead');
+  };
+
+  const handleProfileClick = () => {
+    if (!hasChangedAvatar && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onAvatarChange) {
+      onAvatarChange(user.id, file);
+    }
   };
 
   const menuItems = [
@@ -49,7 +64,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
       id: 'employees', 
       label: 'Daftar Karyawan', 
       icon: Users, 
-      isVisible: isOperatorType(user.role as string) && !user.role.toString().toLowerCase().includes('worker')
+      isVisible: isOperatorType(user.role as string) || user.role.toString().toLowerCase().includes('kurir')
     },
     { 
       id: 'settings', 
@@ -88,10 +103,23 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
             <RefreshCw className="w-5 h-5 group-active:rotate-180 transition-transform duration-500" />
           </button>
           <div className="h-8 w-[1px] bg-gray-200 mx-2 hidden sm:block"></div>
-          <div className="hidden sm:flex flex-col items-end mr-2">
-            <span className="text-sm font-semibold text-gray-700">{user.name}</span>
-            <span className="text-[10px] text-gray-400 font-mono">{user.id}</span>
+          
+          <div className="hidden sm:flex items-center gap-3 mr-2">
+            <div className="flex flex-col items-end">
+              <span className="text-sm font-semibold text-gray-700">{user.name}</span>
+              <span className="text-[10px] text-gray-400 font-mono">{user.id}</span>
+            </div>
+            <div className="w-9 h-9 rounded-full border-2 border-blue-100 p-0.5 shadow-sm overflow-hidden bg-white">
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <div className="w-full h-full bg-blue-50 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs uppercase">
+                  {user.name.charAt(0)}
+                </div>
+              )}
+            </div>
           </div>
+
           <button 
             onClick={onLogout}
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all"
@@ -148,15 +176,41 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
             </nav>
 
             <div className="mt-auto pt-6 border-t border-gray-100">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Signed in as</p>
+              <div className="bg-gray-50 rounded-2xl p-4 group relative">
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                
+                <p className="text-[10px] text-gray-400 font-bold uppercase mb-2 flex justify-between">
+                  <span>Signed in as</span>
+                  {!hasChangedAvatar && (
+                    <button onClick={handleProfileClick} className="text-blue-600 hover:underline flex items-center gap-1">
+                      <Camera className="w-2.5 h-2.5" /> Ubah Foto
+                    </button>
+                  )}
+                </p>
+
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
-                    {user.name.charAt(0)}
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-full bg-white border-2 border-white shadow-sm overflow-hidden flex items-center justify-center">
+                      {user.avatarUrl ? (
+                        <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        <div className="w-full h-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                          {user.name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    {!hasChangedAvatar && (
+                      <button 
+                        onClick={handleProfileClick}
+                        className="absolute -bottom-1 -right-1 bg-blue-600 text-white p-1 rounded-full shadow-lg border-2 border-white hover:bg-blue-700 transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Camera className="w-2.5 h-2.5" />
+                      </button>
+                    )}
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-gray-700 truncate w-24">{user.name}</span>
-                    <span className="text-[10px] text-gray-400">{user.role}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-bold text-gray-700 truncate">{user.name}</span>
+                    <span className="text-[10px] text-gray-400 truncate">{user.role}</span>
                   </div>
                 </div>
               </div>
