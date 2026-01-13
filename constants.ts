@@ -3,7 +3,7 @@ import { Role } from './types';
 
 export const SHEET_URLS = {
   // Ganti URL ini dengan URL Web App Google Apps Script Anda untuk mendukung fitur SAVE (POST)
-  UPDATE_ENDPOINT: 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec',
+  UPDATE_ENDPOINT: 'https://script.google.com/macros/s/AKfycbzEICt8WGQ0T-1Msq87wBbsC8H6jF0vSXdYYv0SUDBEM3HE3AY2-DxDj1cTK_5e-Q__/exec',
   TASKS: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=1818009061',
   ATTENDANCE: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=961433836',
   COURIER_ACCESS: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=1904625355',

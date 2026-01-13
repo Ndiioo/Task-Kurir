@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert } from 'lucide-react';
@@ -131,6 +132,16 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       const users = await getAllUsers();
+      
+      // Update customAvatars dengan data dari Spreadsheet (AvatarUrl)
+      const spreadsheetAvatars: Record<string, string> = {};
+      users.forEach(u => {
+        if (u.avatarUrl) {
+          spreadsheetAvatars[u.id] = u.avatarUrl;
+        }
+      });
+      setCustomAvatars(prev => ({ ...prev, ...spreadsheetAvatars }));
+
       const courierList = users.filter(u => checkIsCourier(u.role.toString()));
       const opsList = users.filter(u => !checkIsCourier(u.role.toString()));
 
@@ -149,7 +160,8 @@ const App: React.FC = () => {
               name: tGroup.courierName,
               role: tGroup.courierRole || Role.COURIER,
               station: tGroup.hub || 'Tompobulu Hub',
-              password: '123456'
+              password: '123456',
+              avatarUrl: ''
             });
           }
         }
@@ -221,45 +233,33 @@ const App: React.FC = () => {
     alert("Pengajuan telah dikirim ke Hub Lead.");
   };
 
-  /**
-   * FITUR: Menyimpan otomatis perubahan Role ke Database Spreadsheet
-   */
   const handleApproval = async (request: PromotionRequest, isApproved: boolean) => {
-    // 1. Update status pengajuan lokal
     setPromotions(prev => prev.map(p => 
       p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
     ));
 
     if (isApproved) {
-      // 2. Simpan Otomatis ke Spreadsheet (Global)
       await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
 
-      // 3. Update State Lokal (Agar Ops lain bisa melihat jika sudah disinkronkan)
       setAllUsers(prev => prev.map(u => 
         u.id === request.employeeId ? { ...u, role: request.proposedRole } : u
       ));
       
-      // 4. Jika yang diupdate adalah user yang sedang login, perbarui session
       if (currentUser?.id === request.employeeId) {
         const updatedUser = { ...currentUser, role: request.proposedRole };
         setCurrentUser(updatedUser);
         localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
       }
 
-      alert(`Jabatan ${request.employeeName} telah berhasil diperbarui ke ${request.proposedRole}.`);
+      alert(`Jabatan ${request.employeeName} telah berhasil diperbarui ke ${request.proposedRole} di database.`);
     }
   };
 
-  /**
-   * FITUR: Menyimpan otomatis Avatar ke Database Spreadsheet
-   */
   const handleAvatarChange = (userId: string, file: File) => {
-    if (changedAvatarIds.has(userId)) return;
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       
-      // 1. Update State Lokal segera (Responsivitas UI)
       setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
       setChangedAvatarIds(prev => {
         const next = new Set(prev);
@@ -267,10 +267,11 @@ const App: React.FC = () => {
         return next;
       });
 
-      // 2. Simpan Otomatis ke Spreadsheet (Database Global)
-      await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
+      const success = await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
+      if (!success) {
+        console.warn("Gagal menyimpan avatar ke spreadsheet, namun tetap disimpan lokal.");
+      }
 
-      // 3. Update Session jika user sendiri yang ganti
       if (currentUser?.id === userId) {
         const updatedUser = { ...currentUser, avatarUrl: base64 };
         setCurrentUser(updatedUser);
@@ -364,10 +365,6 @@ const App: React.FC = () => {
     });
   };
 
-  const toggleTaskScannedLocal = (taskId: string) => {
-    toggleTaskScanned(taskId);
-  };
-
   const settingsEmployeeSearchResults = useMemo(() => {
     if (!searchEmployeeQuery.trim()) return [];
     return allUsers.filter(u => 
@@ -433,13 +430,21 @@ const App: React.FC = () => {
     );
   }
 
+  // Persiapan data user aktif dengan avatar yang diperbarui
+  const currentUserWithAvatar = {
+    ...currentUser,
+    avatarUrl: customAvatars[currentUser.id] || currentUser.avatarUrl
+  };
+
   return (
     <Layout
-      user={currentUser}
+      user={currentUserWithAvatar}
       onLogout={handleLogout}
       onSync={fetchData}
       activeMenu={activeMenu}
       setActiveMenu={setActiveMenu}
+      onAvatarChange={handleAvatarChange}
+      hasChangedAvatar={changedAvatarIds.has(currentUser.id)}
     >
       {isLoading ? (
         <div className="h-full flex flex-col items-center justify-center gap-4 py-12">
@@ -638,8 +643,12 @@ const App: React.FC = () => {
                           </td>
                           <td className="px-0.5 sm:px-6 py-1.5 sm:py-4">
                             <div className="flex items-center gap-1 sm:gap-3 whitespace-nowrap">
-                              <div className="w-4 h-4 sm:w-8 sm:h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-[6px] sm:text-[10px] shrink-0">
-                                {att.name.charAt(0)}
+                              <div className="w-4 h-4 sm:w-8 sm:h-8 rounded-full border border-gray-100 overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-[6px] sm:text-[10px] shrink-0">
+                                {customAvatars[att.opsId] ? (
+                                  <img src={customAvatars[att.opsId]} alt={att.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  att.name.charAt(0)
+                                )}
                               </div>
                               <span className="text-[7px] sm:text-sm font-black text-gray-800 leading-none truncate max-w-[50px] sm:max-w-none">
                                 {att.name}
@@ -905,7 +914,6 @@ const App: React.FC = () => {
 
                     <div className="bg-indigo-50/50 border border-indigo-100 rounded-[2rem] p-6 space-y-4">
                       <div className="flex items-center gap-2 text-indigo-600 mb-2">
-                        <Info className="w-4 h-4" />
                         <span className="text-[10px] font-black uppercase tracking-widest">Informasi Penting</span>
                       </div>
                       <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
