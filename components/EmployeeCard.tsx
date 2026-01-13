@@ -21,108 +21,117 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, isCurrentUser, ha
     }
   };
 
+  // Helper for dynamic font size of the name plate
+  const getNameFontSize = (name: string) => {
+    if (name.length > 25) return 'text-[11px]';
+    if (name.length > 18) return 'text-[13px]';
+    return 'text-[15px]';
+  };
+
   return (
     <div className="flex flex-col items-center">
-      {/* Container Card dengan aspek rasio ID Card vertikal */}
-      <div className="w-full max-w-[300px] h-[500px] bg-white rounded-[2.5rem] shadow-2xl overflow-hidden relative border border-gray-100 flex flex-col items-center animate-in fade-in duration-500">
+      {/* Container Card - Standard ID Card Ratio for Aesthetics */}
+      <div className="w-[280px] h-[480px] bg-white rounded-[2.5rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.15)] overflow-hidden relative border border-gray-100 flex flex-col items-center animate-in fade-in duration-500">
         
-        {/* Latar Belakang - Pola Gelombang Atas */}
-        <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none">
-          <div className="absolute -top-16 -left-10 w-40 h-40 bg-[#8b321a] rounded-full opacity-90"></div>
-          <div className="absolute -top-12 -right-16 w-56 h-56 bg-[#e65c2a] rounded-full opacity-80"></div>
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/10 to-transparent"></div>
+        {/* Background Accents (Top Curves) */}
+        <div className="absolute top-0 left-0 w-full h-24 overflow-hidden pointer-events-none">
+          <div className="absolute -top-12 -left-12 w-40 h-40 bg-[#8b321a] rounded-full opacity-100"></div>
+          <div className="absolute -top-10 -right-20 w-56 h-56 bg-[#e65c2a] rounded-full opacity-100"></div>
         </div>
 
-        {/* Latar Belakang - Pola Gelombang Bawah */}
-        <div className="absolute bottom-0 left-0 w-full h-32 overflow-hidden pointer-events-none">
-          <div className="absolute -bottom-16 -right-10 w-40 h-40 bg-[#8b321a] rounded-full opacity-90"></div>
-          <div className="absolute -bottom-12 -left-16 w-56 h-56 bg-[#e65c2a] rounded-full opacity-80"></div>
+        {/* Background Accents (Bottom Curves) */}
+        <div className="absolute bottom-0 left-0 w-full h-20 overflow-hidden pointer-events-none">
+          <div className="absolute -bottom-10 -right-10 w-36 h-36 bg-[#8b321a] rounded-full opacity-100"></div>
+          <div className="absolute -bottom-8 -left-16 w-48 h-48 bg-[#e65c2a] rounded-full opacity-100"></div>
         </div>
 
-        {/* Header - Logo/Nama Perusahaan */}
-        <div className="relative mt-12 mb-4 text-center z-10">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-full border-4 border-[#e65c2a] flex items-center justify-center">
-              <div className="w-2 h-2 bg-[#e65c2a] rounded-full"></div>
+        {/* Brand Header */}
+        <div className="relative mt-7 mb-2 flex flex-col items-center z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full border-[3px] border-[#e65c2a] flex items-center justify-center bg-white">
+              <div className="w-1.5 h-1.5 bg-[#e65c2a] rounded-full"></div>
             </div>
-            <div className="flex flex-col items-start leading-none">
-              <span className="text-sm font-black text-[#e65c2a] tracking-tighter uppercase">Tompobulu</span>
-              <span className="text-sm font-black text-[#8b321a] tracking-tighter uppercase">Hub Logistik</span>
+            <div className="flex flex-col leading-none">
+              <span className="text-[10px] font-black text-[#e65c2a] uppercase tracking-tighter">Tompobulu</span>
+              <span className="text-[10px] font-black text-[#8b321a] uppercase tracking-tighter">Hub Logistik</span>
             </div>
           </div>
         </div>
 
-        {/* Foto Profil dengan Frame Lingkaran Oranye */}
+        {/* Profile Picture Frame */}
         <div className="relative z-10 mt-2">
-          <div className="w-32 h-32 rounded-full border-[6px] border-[#e65c2a] p-1 bg-white shadow-lg overflow-hidden flex items-center justify-center">
+          <div className="w-24 h-24 rounded-full border-[4px] border-[#e65c2a] p-1 bg-white shadow-sm overflow-hidden flex items-center justify-center">
             {employee.avatarUrl ? (
               <img src={employee.avatarUrl} alt={employee.name} className="w-full h-full object-cover rounded-full" />
             ) : (
               <div className="w-full h-full bg-gray-50 rounded-full flex items-center justify-center">
-                <UserIcon className="w-16 h-16 text-gray-200" />
+                <UserIcon className="w-12 h-12 text-gray-200" />
               </div>
             )}
           </div>
           
-          {/* Tombol Kamera (Hanya User Sendiri & 1x) */}
           {isCurrentUser && !hasChangedAvatar && (
             <>
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-1 right-1 bg-[#e65c2a] text-white p-2 rounded-full shadow-lg border-2 border-white hover:bg-[#8b321a] transition-colors z-20"
+                className="absolute bottom-0 right-0 bg-[#e65c2a] text-white p-1.5 rounded-full shadow-lg border-2 border-white hover:bg-[#8b321a] transition-colors z-20"
               >
-                <Camera className="w-4 h-4" />
+                <Camera className="w-3 h-3" />
               </button>
             </>
           )}
 
           {isCurrentUser && hasChangedAvatar && (
-            <div className="absolute bottom-1 right-1 bg-green-500 text-white p-1 rounded-full shadow-lg border-2 border-white z-20">
-              <CheckCircle2 className="w-4 h-4" />
+            <div className="absolute bottom-0 right-0 bg-green-500 text-white p-1 rounded-full shadow-lg border-2 border-white z-20">
+              <CheckCircle2 className="w-3 h-3" />
             </div>
           )}
         </div>
 
-        {/* Name Plate - Rounded Rectangle Pill Style */}
-        <div className="relative z-10 mt-6 w-[85%]">
-          <div className="bg-[#e65c2a] py-3 px-4 rounded-full border-[3px] border-[#8b321a] shadow-md text-center">
-            <h3 className="text-lg font-black text-white leading-none tracking-tight uppercase truncate">
+        {/* Name Plate Section - Improved Padding and Dynamic Font */}
+        <div className="relative z-10 mt-5 w-[85%]">
+          <div className="bg-[#e65c2a] py-2.5 px-3 rounded-[1.25rem] border-[2px] border-[#8b321a] shadow-md text-center min-h-[56px] flex flex-col justify-center">
+            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase`}>
               {employee.name}
             </h3>
-            <p className="text-[10px] font-bold text-orange-100 uppercase mt-1 tracking-widest">
+            <p className="text-[8px] font-bold text-orange-100 uppercase mt-0.5 tracking-widest opacity-90">
               {employee.role}
             </p>
           </div>
         </div>
 
-        {/* Informasi Detail ID & NIK */}
-        <div className="relative z-10 mt-6 flex flex-col items-center space-y-1 text-center">
+        {/* Detailed Information Section - Balanced Spacing */}
+        <div className="relative z-10 mt-5 flex flex-col items-center w-full px-4 gap-3 text-center">
           <div className="flex flex-col">
-            <span className="text-[9px] font-black text-[#8b321a] uppercase tracking-widest">User ID / ID Kurir</span>
-            <span className="text-xs font-black text-gray-700 font-mono tracking-tighter">{employee.id}</span>
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">USER ID / FMS ID</span>
+            <span className="text-sm font-black text-gray-800 font-mono leading-none tracking-tight">{employee.id}</span>
           </div>
-          <div className="flex flex-col pt-1">
-            <span className="text-[9px] font-black text-[#e65c2a] uppercase tracking-widest">NIK Karyawan</span>
-            <span className="text-xs font-black text-gray-700">{employee.nik || '123-456-7890'}</span>
+          
+          <div className="flex flex-col">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-0.5">NIK KARYAWAN</span>
+            <span className="text-[11px] font-black text-gray-700 leading-none">
+              {employee.nik || '730603xxxxxxxxxx'}
+            </span>
           </div>
-          <div className="flex flex-col pt-1">
-             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Station</span>
-             <span className="text-[10px] font-bold text-gray-500">{employee.station || 'Tompobulu'}</span>
+
+          <div className="flex flex-col">
+             <span className="text-[8px] font-black text-[#e65c2a] uppercase tracking-widest mb-0.5">BASE STATION</span>
+             <span className="text-[11px] font-black text-blue-700 leading-none truncate max-w-[200px]">
+               {employee.station || 'Tompobulu Hub'}
+             </span>
           </div>
         </div>
 
-        {/* QR Code Section (Menggantikan Barcode agar fungsional) */}
-        <div className="relative z-10 mt-auto mb-10 flex flex-col items-center">
-          <div className="bg-white p-2 border-2 border-[#e65c2a]/20 rounded-lg shadow-sm">
-            <QRCodeSVG value={employee.id} size={64} fgColor="#8b321a" />
-          </div>
-          <span className="text-[7px] font-mono text-gray-400 mt-2 tracking-[0.4em] uppercase">Authorized personnel only</span>
+        {/* QR Code Section - Adjusted Size for better fit */}
+        <div className="relative z-10 mt-auto mb-10 bg-white p-1.5 rounded-lg border border-gray-100 shadow-sm flex flex-col items-center">
+          <QRCodeSVG value={employee.id} size={54} fgColor="#8b321a" />
+          <span className="text-[5px] font-mono text-gray-400 mt-1 uppercase tracking-[0.2em]">Verified Secure</span>
         </div>
 
-        {/* Footer URL Placeholder */}
-        <div className="absolute bottom-4 z-10">
-          <span className="text-[8px] font-bold text-[#8b321a]/50 uppercase tracking-widest">www.tompobulu-hub.logistics</span>
+        {/* Small Footer Text */}
+        <div className="absolute bottom-2 z-10 opacity-40">
+          <span className="text-[6px] font-bold text-[#8b321a] uppercase tracking-widest">tompobulu-hub.management-portal</span>
         </div>
 
       </div>
