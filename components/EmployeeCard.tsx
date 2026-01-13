@@ -52,7 +52,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, isCurrentUser, ha
               <div className="w-1.5 h-1.5 bg-[#e65c2a] rounded-full"></div>
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-[10px] font-black text-[#e65c2a] uppercase tracking-tighter">Tompobulu</span>
+              <span className="text-[10px] font-black text-black uppercase tracking-tighter">Tompobulu</span>
               <span className="text-[10px] font-black text-[#8b321a] uppercase tracking-tighter">Hub Logistik</span>
             </div>
           </div>
