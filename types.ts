@@ -64,5 +64,6 @@ export interface PromotionRequest {
   proposedRole: Role | string;
   requestedBy: string;
   status: 'Pending' | 'Approved' | 'Rejected';
+  type: 'Promote' | 'Demote' | 'ChangeAccess';
   feedback?: string;
 }

@@ -98,7 +98,6 @@ const App: React.FC = () => {
     try {
       const users = await getAllUsers();
       
-      // Update customAvatars dengan data terbaru dari Spreadsheet
       const spreadsheetAvatars: Record<string, string> = {};
       users.forEach(u => {
         if (u.avatarUrl) {
@@ -106,7 +105,6 @@ const App: React.FC = () => {
         }
       });
       
-      // Menggabungkan data spreadsheet dengan avatar yang baru diubah (jika ada yang belum masuk spreadsheet)
       setCustomAvatars(prev => ({ ...prev, ...spreadsheetAvatars }));
 
       const courierList = users.filter(u => checkIsCourier(u.role.toString()));
@@ -121,7 +119,6 @@ const App: React.FC = () => {
       setTasks(taskData);
       setAttendance(attData);
 
-      // Jika user yang login datanya berubah di spreadsheet (misal role), update session
       if (currentUser) {
         const updatedSelf = users.find(u => u.id === currentUser.id);
         if (updatedSelf && (updatedSelf.role !== currentUser.role || updatedSelf.avatarUrl !== currentUser.avatarUrl)) {
@@ -172,7 +169,6 @@ const App: React.FC = () => {
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       
-      // Update state lokal untuk umpan balik instan
       setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
       setChangedAvatarIds(prev => {
         const next = new Set(prev);
@@ -180,7 +176,6 @@ const App: React.FC = () => {
         return next;
       });
 
-      // Simpan ke Spreadsheet
       const success = await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
       
       if (currentUser?.id === userId) {
@@ -285,19 +280,24 @@ const App: React.FC = () => {
       p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
     ));
     if (isApproved) {
-      await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
-      setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, role: request.proposedRole } : u));
-      if (currentUser?.id === request.employeeId) {
-        const updatedUser = { ...currentUser, role: request.proposedRole };
-        setCurrentUser(updatedUser);
-        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      const success = await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
+      if (success) {
+        setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, role: request.proposedRole } : u));
+        if (currentUser?.id === request.employeeId) {
+          const updatedUser = { ...currentUser, role: request.proposedRole };
+          setCurrentUser(updatedUser);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+        }
+        alert(`Request berhasil disetujui. Jabatan ${request.employeeName} kini adalah ${request.proposedRole}.`);
+      } else {
+        alert("Gagal sinkronisasi ke Spreadsheet. Perubahan hanya dilakukan secara lokal.");
       }
-      alert(`Jabatan ${request.employeeName} diperbarui.`);
     }
   };
 
   const handlePromotionSubmission = () => {
-    if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser) return;
+    if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser || !adjustmentType) return;
+    
     const newRequest: PromotionRequest = {
       id: `adj-${Date.now()}`,
       employeeId: selectedEmpForAdjustment.id,
@@ -305,14 +305,16 @@ const App: React.FC = () => {
       currentRole: selectedEmpForAdjustment.role,
       proposedRole: adjustmentTargetRole,
       requestedBy: currentUser.name,
-      status: 'Pending'
+      status: 'Pending',
+      type: adjustmentType as 'Promote' | 'Demote' | 'ChangeAccess'
     };
+    
     setPromotions(prev => [...prev, newRequest]);
     setSelectedEmpForAdjustment(null);
     setAdjustmentTargetRole('');
     setAdjustmentType('');
     setSearchEmployeeQuery('');
-    alert("Pengajuan telah dikirim.");
+    alert("Permintaan perubahan data telah dikirim ke Hub Lead untuk persetujuan.");
   };
 
   const settingsEmployeeSearchResults = useMemo(() => {
@@ -738,9 +740,14 @@ const App: React.FC = () => {
                       {promotions.filter(p => p.status === 'Pending').map((p) => (
                         <div key={p.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between group hover:shadow-xl hover:border-blue-100 transition-all">
                           <div className="flex justify-between items-start mb-4">
-                            <div>
-                              <p className="text-sm font-black text-gray-900 leading-tight">{p.employeeName}</p>
-                              <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">ID: {p.employeeId}</p>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase text-white ${p.type === 'Promote' ? 'bg-green-500' : p.type === 'Demote' ? 'bg-red-500' : 'bg-blue-500'}`}>
+                                  {p.type === 'Promote' ? 'Promosi' : p.type === 'Demote' ? 'Demosi' : 'Akses'}
+                                </span>
+                                <p className="text-sm font-black text-gray-900 leading-tight">{p.employeeName}</p>
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-bold uppercase">ID: {p.employeeId}</p>
                             </div>
                             <span className="bg-orange-50 text-orange-600 text-[8px] font-black uppercase px-2 py-1 rounded-lg">Menunggu</span>
                           </div>
@@ -758,14 +765,156 @@ const App: React.FC = () => {
                           <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                             <p className="text-[9px] font-black text-gray-400">Oleh: {p.requestedBy}</p>
                             <div className="flex gap-2">
-                              <button onClick={() => handleApproval(p, false)} className="px-4 py-2 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-xl">Tolak</button>
-                              <button onClick={() => handleApproval(p, true)} className="px-4 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl">Setujui</button>
+                              <button onClick={() => handleApproval(p, false)} className="px-4 py-2 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-xl hover:bg-red-600 hover:text-white transition-all">Tolak</button>
+                              <button onClick={() => handleApproval(p, true)} className="px-4 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-blue-700 transition-all">Setujui</button>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
+                </section>
+              )}
+
+              {(currentUser.role === Role.SHIFT_LEAD || currentUser.role.toString().toLowerCase().includes('shift lead')) && (
+                <section className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  <div className="lg:col-span-5 space-y-6">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
+                        <UsersIcon className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-gray-900 leading-none">Pilih Karyawan</h3>
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Cari Nama atau User ID</p>
+                      </div>
+                    </div>
+
+                    <div className="relative group">
+                      <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
+                      <input 
+                        type="text" 
+                        value={searchEmployeeQuery}
+                        onChange={(e) => setSearchEmployeeQuery(e.target.value)}
+                        placeholder="Ketik nama atau ID kurir/staff..."
+                        className="w-full pl-12 pr-6 py-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 outline-none transition-all font-bold text-sm text-gray-700 shadow-sm"
+                      />
+                      
+                      {settingsEmployeeSearchResults.length > 0 && !selectedEmpForAdjustment && (
+                        <div className="absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
+                          {settingsEmployeeSearchResults.map(emp => (
+                            <button 
+                              key={emp.id}
+                              onClick={() => {
+                                setSelectedEmpForAdjustment(emp);
+                                setSearchEmployeeQuery('');
+                                setAdjustmentType('');
+                                setAdjustmentTargetRole('');
+                              }}
+                              className="w-full p-4 flex items-center justify-between hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs">
+                                  {emp.name.charAt(0)}
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-xs font-black text-gray-900">{emp.name}</p>
+                                  <p className="text-[9px] font-black text-gray-400 uppercase">{emp.role} • {emp.id}</p>
+                                </div>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-gray-300" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-indigo-50/50 border border-indigo-100 rounded-[2rem] p-6 space-y-4">
+                      <div className="flex items-center gap-2 text-indigo-600 mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest">Informasi Penting</span>
+                      </div>
+                      <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
+                        Setiap permintaan perubahan data (Promosi, Demosi, atau Perubahan Akses) memerlukan persetujuan Hub Lead sebelum diaplikasikan ke sistem.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-7">
+                    {selectedEmpForAdjustment ? (
+                      <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 flex flex-col md:flex-row gap-8">
+                        <div className="shrink-0 scale-90">
+                          <EmployeeCard 
+                            employee={selectedEmpForAdjustment} 
+                            isCurrentUser={false}
+                            hasChangedAvatar={false}
+                          />
+                        </div>
+                        
+                        <div className="flex-1 space-y-8">
+                          <div>
+                            <h3 className="text-lg font-black text-gray-900 leading-tight">Konfigurasi Perubahan</h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pilih Tindakan & Role Baru</p>
+                          </div>
+
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Tipe Perubahan</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <button 
+                                onClick={() => setAdjustmentType('Promote')}
+                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'Promote' ? 'bg-green-50 border-green-500 text-green-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
+                              >
+                                <UserCheck className="w-5 h-5" />
+                                Promosi
+                              </button>
+                              <button 
+                                onClick={() => setAdjustmentType('Demote')}
+                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'Demote' ? 'bg-red-50 border-red-500 text-red-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
+                              >
+                                <UserMinus className="w-5 h-5" />
+                                Demosi
+                              </button>
+                              <button 
+                                onClick={() => setAdjustmentType('ChangeAccess')}
+                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'ChangeAccess' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
+                              >
+                                <ShieldAlert className="w-5 h-5" />
+                                Akses
+                              </button>
+                            </div>
+                          </div>
+
+                          {adjustmentType && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Target Role</label>
+                              <div className="relative">
+                                <select 
+                                  value={adjustmentTargetRole}
+                                  onChange={(e) => setAdjustmentTargetRole(e.target.value)}
+                                  className="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-bold text-sm text-gray-700 appearance-none transition-all"
+                                >
+                                  <option value="">Pilih Role Baru...</option>
+                                  {Object.values(Role).filter(r => r !== selectedEmpForAdjustment.role && r !== Role.HUB_LEAD).map(role => (
+                                    <option key={role} value={role}>{role}</option>
+                                  ))}
+                                </select>
+                                <ChevronRight className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 rotate-90 pointer-events-none" />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="pt-4 border-t border-gray-50 flex gap-3">
+                            <button onClick={() => setSelectedEmpForAdjustment(null)} className="flex-1 py-4 bg-gray-50 text-gray-500 text-xs font-black uppercase rounded-2xl hover:bg-gray-100 transition-all active:scale-95">Batal</button>
+                            <button onClick={handlePromotionSubmission} disabled={!adjustmentTargetRole} className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg ${!adjustmentTargetRole ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700'}`}>Kirim Request</button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full min-h-[400px] bg-white rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center p-12 text-center group">
+                        <div className="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500"><UsersIcon className="w-12 h-12 text-gray-200" /></div>
+                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Pilih Karyawan Untuk Mengajukan Perubahan</h4>
+                        <p className="text-xs text-gray-300 max-w-xs leading-relaxed">Cari karyawan pada kolom pencarian di sebelah kiri untuk mulai melakukan konfigurasi jabatan atau akses.</p>
+                      </div>
+                    )}
+                  </div>
                 </section>
               )}
             </div>
