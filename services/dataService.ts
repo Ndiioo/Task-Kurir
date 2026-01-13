@@ -12,7 +12,9 @@ export const normalizeId = (id: any): string => {
 
 export const fetchCSV = async (url: string) => {
   try {
-    const response = await fetch(url);
+    // Menambahkan cache buster untuk meminimalkan jeda cache Google (default 5 menit)
+    const cacheBuster = `&cache_bust=${Date.now()}`;
+    const response = await fetch(url + cacheBuster);
     const text = await response.text();
     return parseCSV(text);
   } catch (error) {
@@ -42,13 +44,12 @@ const parseCSV = (csv: string) => {
  */
 export const updateUserInSpreadsheet = async (userId: string, updates: Partial<User>) => {
   try {
-    if (!SHEET_URLS.UPDATE_ENDPOINT || SHEET_URLS.UPDATE_ENDPOINT.includes('YOUR_SCRIPT_ID')) {
-      console.warn('Update Endpoint Spreadsheet belum dikonfigurasi. Perubahan hanya tersimpan di sesi lokal.');
+    if (!SHEET_URLS.UPDATE_ENDPOINT) {
+      console.warn('Update Endpoint Spreadsheet belum dikonfigurasi.');
       return false;
     }
 
     // Menggunakan text/plain agar tidak memicu preflight request yang sering diblokir Google Apps Script
-    // Mode no-cors digunakan karena Google Apps Script tidak mendukung header CORS tradisional pada respons POST
     await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
       method: 'POST',
       mode: 'no-cors',
@@ -159,7 +160,7 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || '123456',
     nik: d.NIK || '1234567890',
-    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || ''
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || ''
   })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER));
 
   const staff: User[] = staffData.map((d: any) => ({
@@ -169,7 +170,7 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || 'admin123',
     nik: d.NIK || '0987654321',
-    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || ''
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || ''
   }));
 
   return [...couriers, ...staff];
