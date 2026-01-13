@@ -120,7 +120,7 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || '123456',
     nik: d.NIK || '1234567890'
-  }));
+  })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER)); // Filter out unclear 'Courier' data
 
   const staff: User[] = staffData.map((d: any) => ({
     id: (d.UserID || d['User ID'] || d['Ops ID'] || 'S000').toString().trim(),
