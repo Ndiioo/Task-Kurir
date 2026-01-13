@@ -1,0 +1,7 @@
+{
+  "name": "Tompobulu Hub Monitoring System",
+  "description": "A comprehensive monitoring application for logistics hubs to manage package flows, courier tasks, staff attendance, and personnel records with role-based access control.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
