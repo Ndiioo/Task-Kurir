@@ -13,7 +13,7 @@ const LAST_ACTIVE_KEY = 'tompobulu_last_active';
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 Menit
 
 const App: React.FC = () => {
-  // Auth State with Persistence & Cross-refresh Inactivity Check
+  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem(SESSION_KEY);
     const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
@@ -25,11 +25,7 @@ const App: React.FC = () => {
         localStorage.removeItem(LAST_ACTIVE_KEY);
         return null;
       }
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
+      try { return JSON.parse(saved); } catch (e) { return null; }
     }
     return null;
   });
@@ -48,13 +44,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTaskGroup, setSelectedTaskGroup] = useState<AssignTask | null>(null);
 
-  // Settings Menu Specific State
-  const [searchEmployeeQuery, setSearchEmployeeQuery] = useState('');
-  const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
-  const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<Role | string>('');
-  const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | ''>('');
-
-  // Tracking
+  // Filters & Tracking
   const [scannedTaskIds, setScannedTaskIds] = useState<Set<string>>(new Set());
   const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
   const [changedAvatarIds, setChangedAvatarIds] = useState<Set<string>>(new Set());
@@ -67,45 +57,14 @@ const App: React.FC = () => {
   const [taskRoleFilter, setTaskRoleFilter] = useState('All Roles');
   const [attendanceFilter, setAttendanceFilter] = useState('All');
 
+  const [searchEmployeeQuery, setSearchEmployeeQuery] = useState('');
+  const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
+  const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<Role | string>('');
+  const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | ''>('');
+
   const timeoutRef = useRef<any>(null);
 
-  // Logout Functionality
-  const handleLogout = useCallback(() => {
-    setCurrentUser(null);
-    setLoginId('');
-    setLoginPwd('');
-    setSelectedEmpForAdjustment(null);
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(LAST_ACTIVE_KEY);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-  }, []);
-
-  // Inactivity Timer Logic
-  const resetInactivityTimer = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (currentUser) {
-      localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
-      timeoutRef.current = setTimeout(() => {
-        handleLogout();
-        alert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 5 menit.");
-      }, INACTIVITY_TIMEOUT);
-    }
-  }, [currentUser, handleLogout]);
-
-  useEffect(() => {
-    if (currentUser) {
-      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-      const listener = () => resetInactivityTimer();
-      events.forEach(event => window.addEventListener(event, listener));
-      resetInactivityTimer();
-      return () => {
-        events.forEach(event => window.removeEventListener(event, listener));
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      };
-    }
-  }, [currentUser, resetInactivityTimer]);
-
-  // Load persistence state (non-auth)
+  // Persistence Sync
   useEffect(() => {
     const savedScanned = localStorage.getItem('hub_scanned_ids');
     if (savedScanned) { try { setScannedTaskIds(new Set(JSON.parse(savedScanned))); } catch (e) {} }
@@ -117,11 +76,17 @@ const App: React.FC = () => {
     if (savedPromotions) { try { setPromotions(JSON.parse(savedPromotions)); } catch (e) {} }
   }, []);
 
-  // Persist non-session data
   useEffect(() => { localStorage.setItem('hub_scanned_ids', JSON.stringify(Array.from(scannedTaskIds))); }, [scannedTaskIds]);
   useEffect(() => { localStorage.setItem('hub_custom_avatars', JSON.stringify(customAvatars)); }, [customAvatars]);
   useEffect(() => { localStorage.setItem('hub_changed_avatars', JSON.stringify(Array.from(changedAvatarIds))); }, [changedAvatarIds]);
   useEffect(() => { localStorage.setItem('hub_promotions_history', JSON.stringify(promotions)); }, [promotions]);
+
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LAST_ACTIVE_KEY);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  }, []);
 
   const checkIsCourier = useCallback((role: string) => {
     const r = role.toLowerCase();
@@ -133,13 +98,15 @@ const App: React.FC = () => {
     try {
       const users = await getAllUsers();
       
-      // Update customAvatars dengan data dari Spreadsheet (AvatarUrl)
+      // Update customAvatars dengan data terbaru dari Spreadsheet
       const spreadsheetAvatars: Record<string, string> = {};
       users.forEach(u => {
         if (u.avatarUrl) {
           spreadsheetAvatars[u.id] = u.avatarUrl;
         }
       });
+      
+      // Menggabungkan data spreadsheet dengan avatar yang baru diubah (jika ada yang belum masuk spreadsheet)
       setCustomAvatars(prev => ({ ...prev, ...spreadsheetAvatars }));
 
       const courierList = users.filter(u => checkIsCourier(u.role.toString()));
@@ -150,32 +117,25 @@ const App: React.FC = () => {
         getAttendance(opsList)
       ]);
 
-      const mergedUsers = [...users];
-      taskData.forEach(tGroup => {
-        if (tGroup.courierId && tGroup.courierId !== 'N/A') {
-          const exists = mergedUsers.some(u => u.id === tGroup.courierId);
-          if (!exists) {
-            mergedUsers.push({
-              id: tGroup.courierId,
-              name: tGroup.courierName,
-              role: tGroup.courierRole || Role.COURIER,
-              station: tGroup.hub || 'Tompobulu Hub',
-              password: '123456',
-              avatarUrl: ''
-            });
-          }
-        }
-      });
-
-      setAllUsers(mergedUsers);
+      setAllUsers(users);
       setTasks(taskData);
       setAttendance(attData);
+
+      // Jika user yang login datanya berubah di spreadsheet (misal role), update session
+      if (currentUser) {
+        const updatedSelf = users.find(u => u.id === currentUser.id);
+        if (updatedSelf && (updatedSelf.role !== currentUser.role || updatedSelf.avatarUrl !== currentUser.avatarUrl)) {
+          const newUser = { ...currentUser, ...updatedSelf };
+          setCurrentUser(newUser);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
+        }
+      }
     } catch (err) {
       console.error('Data sync failed', err);
     } finally {
       setIsLoading(false);
     }
-  }, [checkIsCourier]);
+  }, [checkIsCourier, currentUser]);
 
   useEffect(() => {
     fetchData();
@@ -192,9 +152,7 @@ const App: React.FC = () => {
         if (checkIsCourier(user.role as string)) {
           const hasTask = tasks.some(t => t.courierId === user.id);
           if (!hasTask) {
-            const shiftLead = allUsers.find(u => u.role.toString().toLowerCase().includes('shift lead') || u.role.toString().toLowerCase().includes('operator'));
-            const shiftLeadName = shiftLead ? shiftLead.name : 'Shift Lead / Operator On Duty';
-            setLoginError(`Hai "${user.name}", Anda tidak memiliki tugas hari ini, mohon konfirmasi ke Shift lead Anda >> "${shiftLeadName}"`);
+            setLoginError(`Hai "${user.name}", Anda tidak memiliki tugas hari ini.`);
             setIsLoggingIn(false);
             return;
           }
@@ -209,57 +167,12 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  const handlePromotionSubmission = () => {
-    if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser) return;
-    const hasPending = promotions.some(p => p.employeeId === selectedEmpForAdjustment.id && p.status === 'Pending');
-    if (hasPending) {
-      alert("Karyawan ini masih memiliki pengajuan tertunda yang menunggu persetujuan Hub Lead.");
-      return;
-    }
-    const newRequest: PromotionRequest = {
-      id: `adj-${Date.now()}`,
-      employeeId: selectedEmpForAdjustment.id,
-      employeeName: selectedEmpForAdjustment.name,
-      currentRole: selectedEmpForAdjustment.role,
-      proposedRole: adjustmentTargetRole,
-      requestedBy: currentUser.name,
-      status: 'Pending'
-    };
-    setPromotions(prev => [...prev, newRequest]);
-    setSelectedEmpForAdjustment(null);
-    setAdjustmentTargetRole('');
-    setAdjustmentType('');
-    setSearchEmployeeQuery('');
-    alert("Pengajuan telah dikirim ke Hub Lead.");
-  };
-
-  const handleApproval = async (request: PromotionRequest, isApproved: boolean) => {
-    setPromotions(prev => prev.map(p => 
-      p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
-    ));
-
-    if (isApproved) {
-      await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
-
-      setAllUsers(prev => prev.map(u => 
-        u.id === request.employeeId ? { ...u, role: request.proposedRole } : u
-      ));
-      
-      if (currentUser?.id === request.employeeId) {
-        const updatedUser = { ...currentUser, role: request.proposedRole };
-        setCurrentUser(updatedUser);
-        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
-      }
-
-      alert(`Jabatan ${request.employeeName} telah berhasil diperbarui ke ${request.proposedRole} di database.`);
-    }
-  };
-
   const handleAvatarChange = (userId: string, file: File) => {
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       
+      // Update state lokal untuk umpan balik instan
       setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
       setChangedAvatarIds(prev => {
         const next = new Set(prev);
@@ -267,15 +180,17 @@ const App: React.FC = () => {
         return next;
       });
 
+      // Simpan ke Spreadsheet
       const success = await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
-      if (!success) {
-        console.warn("Gagal menyimpan avatar ke spreadsheet, namun tetap disimpan lokal.");
-      }
-
+      
       if (currentUser?.id === userId) {
         const updatedUser = { ...currentUser, avatarUrl: base64 };
         setCurrentUser(updatedUser);
         localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      }
+
+      if (success) {
+        console.log("Avatar berhasil disinkronkan ke database.");
       }
     };
     reader.readAsDataURL(file);
@@ -365,6 +280,41 @@ const App: React.FC = () => {
     });
   };
 
+  const handleApproval = async (request: PromotionRequest, isApproved: boolean) => {
+    setPromotions(prev => prev.map(p => 
+      p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
+    ));
+    if (isApproved) {
+      await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
+      setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, role: request.proposedRole } : u));
+      if (currentUser?.id === request.employeeId) {
+        const updatedUser = { ...currentUser, role: request.proposedRole };
+        setCurrentUser(updatedUser);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      }
+      alert(`Jabatan ${request.employeeName} diperbarui.`);
+    }
+  };
+
+  const handlePromotionSubmission = () => {
+    if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser) return;
+    const newRequest: PromotionRequest = {
+      id: `adj-${Date.now()}`,
+      employeeId: selectedEmpForAdjustment.id,
+      employeeName: selectedEmpForAdjustment.name,
+      currentRole: selectedEmpForAdjustment.role,
+      proposedRole: adjustmentTargetRole,
+      requestedBy: currentUser.name,
+      status: 'Pending'
+    };
+    setPromotions(prev => [...prev, newRequest]);
+    setSelectedEmpForAdjustment(null);
+    setAdjustmentTargetRole('');
+    setAdjustmentType('');
+    setSearchEmployeeQuery('');
+    alert("Pengajuan telah dikirim.");
+  };
+
   const settingsEmployeeSearchResults = useMemo(() => {
     if (!searchEmployeeQuery.trim()) return [];
     return allUsers.filter(u => 
@@ -388,49 +338,22 @@ const App: React.FC = () => {
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">User ID</label>
-              <input
-                type="text"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
-                placeholder="Enter User ID"
-                required
-              />
+              <input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter User ID" required />
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-              <input
-                type="password"
-                value={loginPwd}
-                onChange={(e) => setLoginPwd(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
-                placeholder="••••••••"
-                required
-              />
+              <input type="password" value={loginPwd} onChange={(e) => setLoginPwd(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" required />
             </div>
-            {loginError && (
-              <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span className="leading-tight">{loginError}</span>
-              </div>
-            )}
-            <button
-              disabled={isLoggingIn}
-              type="submit"
-              className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
+            {loginError && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">{loginError}</div>}
+            <button disabled={isLoggingIn} type="submit" className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
               {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Login to System'}
             </button>
           </form>
-          <div className="mt-8 text-center text-xs text-gray-400">
-            © 2024 Tompobulu Logistics • Internal Access Only
-          </div>
         </div>
       </div>
     );
   }
 
-  // Persiapan data user aktif dengan avatar yang diperbarui
   const currentUserWithAvatar = {
     ...currentUser,
     avatarUrl: customAvatars[currentUser.id] || currentUser.avatarUrl
@@ -727,7 +650,7 @@ const App: React.FC = () => {
               <section className="space-y-6">
                 <div className="flex items-center gap-4">
                   <h3 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]"></div>
+                    <div className="w-2 h-2 rounded-full bg-blue-600"></div>
                     Daftar Kurir ({courierEmployees.length})
                   </h3>
                   <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-100 to-transparent"></div>
@@ -754,7 +677,7 @@ const App: React.FC = () => {
               <section className="space-y-6">
                 <div className="flex items-center gap-4">
                   <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div>
+                    <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
                     Operasional & Staff Hub ({staffEmployees.length})
                   </h3>
                   <div className="h-[1px] flex-1 bg-gradient-to-r from-indigo-100 to-transparent"></div>
@@ -807,9 +730,7 @@ const App: React.FC = () => {
 
                   {promotions.filter(p => p.status === 'Pending').length === 0 ? (
                     <div className="bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100 p-16 text-center">
-                      <div className="bg-gray-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <UsersIcon className="w-10 h-10 text-gray-200" />
-                      </div>
+                      <UsersIcon className="w-10 h-10 text-gray-200 mx-auto mb-6" />
                       <p className="text-gray-400 font-black uppercase tracking-[0.2em] text-xs">Semua Pengajuan Telah Diproses</p>
                     </div>
                   ) : (
@@ -823,174 +744,28 @@ const App: React.FC = () => {
                             </div>
                             <span className="bg-orange-50 text-orange-600 text-[8px] font-black uppercase px-2 py-1 rounded-lg">Menunggu</span>
                           </div>
-                          
                           <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-2xl mb-6">
-                            <div className="flex-1 text-center">
+                            <div className="flex-1 text-center truncate">
                               <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Dari</p>
-                              <p className="text-[10px] font-black text-gray-700 bg-white px-2 py-1 rounded-lg border border-gray-100 truncate">{p.currentRole}</p>
+                              <p className="text-[10px] font-black text-gray-700 bg-white px-2 py-1 rounded-lg border border-gray-100">{p.currentRole}</p>
                             </div>
                             <ArrowRightLeft className="w-4 h-4 text-gray-300 shrink-0" />
-                            <div className="flex-1 text-center">
+                            <div className="flex-1 text-center truncate">
                               <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Ke</p>
-                              <p className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 truncate">{p.proposedRole}</p>
+                              <p className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{p.proposedRole}</p>
                             </div>
                           </div>
-
                           <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                             <p className="text-[9px] font-black text-gray-400">Oleh: {p.requestedBy}</p>
                             <div className="flex gap-2">
-                              <button 
-                                onClick={() => handleApproval(p, false)}
-                                className="px-4 py-2 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-xl hover:bg-red-600 hover:text-white transition-all active:scale-95"
-                              >
-                                Tolak
-                              </button>
-                              <button 
-                                onClick={() => handleApproval(p, true)}
-                                className="px-4 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
-                              >
-                                Setujui
-                              </button>
+                              <button onClick={() => handleApproval(p, false)} className="px-4 py-2 bg-red-50 text-red-600 text-[10px] font-black uppercase rounded-xl">Tolak</button>
+                              <button onClick={() => handleApproval(p, true)} className="px-4 py-2 bg-blue-600 text-white text-[10px] font-black uppercase rounded-xl">Setujui</button>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </section>
-              )}
-
-              {(currentUser.role === Role.SHIFT_LEAD || currentUser.role.toString().toLowerCase().includes('shift lead')) && (
-                <section className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-5 space-y-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
-                        <UsersIcon className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-black text-gray-900 leading-none">Pilih Karyawan</h3>
-                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Cari Nama atau User ID</p>
-                      </div>
-                    </div>
-
-                    <div className="relative group">
-                      <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" />
-                      <input 
-                        type="text" 
-                        value={searchEmployeeQuery}
-                        onChange={(e) => setSearchEmployeeQuery(e.target.value)}
-                        placeholder="Ketik nama atau ID kurir/staff..."
-                        className="w-full pl-12 pr-6 py-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 outline-none transition-all font-bold text-sm text-gray-700 shadow-sm"
-                      />
-                      
-                      {settingsEmployeeSearchResults.length > 0 && !selectedEmpForAdjustment && (
-                        <div className="absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
-                          {settingsEmployeeSearchResults.map(emp => (
-                            <button 
-                              key={emp.id}
-                              onClick={() => {
-                                setSelectedEmpForAdjustment(emp);
-                                setSearchEmployeeQuery('');
-                                setAdjustmentType('');
-                                setAdjustmentTargetRole('');
-                              }}
-                              className="w-full p-4 flex items-center justify-between hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs">
-                                  {emp.name.charAt(0)}
-                                </div>
-                                <div className="text-left">
-                                  <p className="text-xs font-black text-gray-900">{emp.name}</p>
-                                  <p className="text-[9px] font-black text-gray-400 uppercase">{emp.role} • {emp.id}</p>
-                                </div>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-gray-300" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="bg-indigo-50/50 border border-indigo-100 rounded-[2rem] p-6 space-y-4">
-                      <div className="flex items-center gap-2 text-indigo-600 mb-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest">Informasi Penting</span>
-                      </div>
-                      <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
-                        Pengajuan perubahan jabatan memerlukan persetujuan Hub Lead. 
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-7">
-                    {selectedEmpForAdjustment ? (
-                      <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 flex flex-col md:flex-row gap-8">
-                        <div className="shrink-0 scale-90">
-                          <EmployeeCard 
-                            employee={selectedEmpForAdjustment} 
-                            isCurrentUser={false}
-                            hasChangedAvatar={false}
-                          />
-                        </div>
-                        
-                        <div className="flex-1 space-y-8">
-                          <div>
-                            <h3 className="text-lg font-black text-gray-900 leading-tight">Konfigurasi Perubahan</h3>
-                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pilih Tindakan & Role Baru</p>
-                          </div>
-
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Tipe Perubahan</label>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <button 
-                                onClick={() => setAdjustmentType('Promote')}
-                                className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-xs font-black ${adjustmentType === 'Promote' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
-                              >
-                                <UserCheck className="w-4 h-4" />
-                                Promosi
-                              </button>
-                              <button 
-                                onClick={() => setAdjustmentType('Demote')}
-                                className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-xs font-black ${adjustmentType === 'Demote' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
-                              >
-                                <UserMinus className="w-4 h-4" />
-                                Demosi
-                              </button>
-                            </div>
-                          </div>
-
-                          {adjustmentType && (
-                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Role Pilihan</label>
-                              <div className="relative">
-                                <select 
-                                  value={adjustmentTargetRole}
-                                  onChange={(e) => setAdjustmentTargetRole(e.target.value)}
-                                  className="w-full p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-bold text-sm text-gray-700 appearance-none transition-all"
-                                >
-                                  <option value="">Pilih Role Baru...</option>
-                                  {Object.values(Role).filter(r => r !== selectedEmpForAdjustment.role && r !== Role.HUB_LEAD).map(role => (
-                                    <option key={role} value={role}>{role}</option>
-                                  ))}
-                                </select>
-                                <ChevronRight className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 rotate-90 pointer-events-none" />
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="pt-4 border-t border-gray-50 flex gap-3">
-                            <button onClick={() => setSelectedEmpForAdjustment(null)} className="flex-1 py-4 bg-gray-50 text-gray-500 text-xs font-black uppercase rounded-2xl hover:bg-gray-100 transition-all active:scale-95">Batal</button>
-                            <button onClick={handlePromotionSubmission} disabled={!adjustmentTargetRole} className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg ${!adjustmentTargetRole ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700'}`}>Ajukan</button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-full min-h-[400px] bg-white rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center p-12 text-center group">
-                        <div className="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500"><UsersIcon className="w-12 h-12 text-gray-200" /></div>
-                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Pilih Karyawan</h4>
-                      </div>
-                    )}
-                  </div>
                 </section>
               )}
             </div>
