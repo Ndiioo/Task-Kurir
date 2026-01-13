@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert } from 'lucide-react';
 import { Role, User, PackageData, AssignTask, AttendanceRecord, PromotionRequest, TaskItem } from './types';
@@ -7,9 +7,32 @@ import Layout from './components/Layout';
 import EmployeeCard from './components/EmployeeCard';
 import QRCodeModal from './components/QRCodeModal';
 
+const SESSION_KEY = 'tompobulu_user_session';
+const LAST_ACTIVE_KEY = 'tompobulu_last_active';
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 Menit
+
 const App: React.FC = () => {
-  // Auth State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Auth State with Persistence & Cross-refresh Inactivity Check
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem(SESSION_KEY);
+    const lastActive = localStorage.getItem(LAST_ACTIVE_KEY);
+    
+    if (saved && lastActive) {
+      const elapsed = Date.now() - parseInt(lastActive, 10);
+      if (elapsed > INACTIVITY_TIMEOUT) {
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(LAST_ACTIVE_KEY);
+        return null;
+      }
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
   const [loginId, setLoginId] = useState('');
   const [loginPwd, setLoginPwd] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -24,68 +47,92 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTaskGroup, setSelectedTaskGroup] = useState<AssignTask | null>(null);
 
-  // Settings Menu Specific State (Shift Lead)
+  // Settings Menu Specific State
   const [searchEmployeeQuery, setSearchEmployeeQuery] = useState('');
   const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
   const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<Role | string>('');
   const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | ''>('');
 
-  // Global Scanned Status Tracking
+  // Tracking
   const [scannedTaskIds, setScannedTaskIds] = useState<Set<string>>(new Set());
-
-  // Custom Avatar Persistence Logic
   const [customAvatars, setCustomAvatars] = useState<Record<string, string>>({});
   const [changedAvatarIds, setChangedAvatarIds] = useState<Set<string>>(new Set());
 
-  // Filter States for Employee List
+  // Filter States
   const [empStationFilter, setEmpStationFilter] = useState('All Stations');
   const [empRoleFilter, setEmpRoleFilter] = useState('All Roles');
   const [empSearch, setEmpSearch] = useState('');
-
-  // General Filters
   const [taskHubFilter, setTaskHubFilter] = useState('All Hubs');
   const [taskRoleFilter, setTaskRoleFilter] = useState('All Roles');
   const [attendanceFilter, setAttendanceFilter] = useState('All');
 
-  // Load state from localStorage
+  const timeoutRef = useRef<any>(null);
+
+  // Logout Functionality
+  const handleLogout = useCallback(() => {
+    setCurrentUser(null);
+    setLoginId('');
+    setLoginPwd('');
+    setSelectedEmpForAdjustment(null);
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(LAST_ACTIVE_KEY);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  }, []);
+
+  // Inactivity Timer Logic
+  const resetInactivityTimer = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (currentUser) {
+      // Perbarui timestamp di localStorage untuk persistensi lintas refresh
+      localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+      
+      timeoutRef.current = setTimeout(() => {
+        handleLogout();
+        alert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 5 menit.");
+      }, INACTIVITY_TIMEOUT);
+    }
+  }, [currentUser, handleLogout]);
+
+  useEffect(() => {
+    if (currentUser) {
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+      const listener = () => resetInactivityTimer();
+      
+      events.forEach(event => window.addEventListener(event, listener));
+      resetInactivityTimer();
+
+      return () => {
+        events.forEach(event => window.removeEventListener(event, listener));
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      };
+    }
+  }, [currentUser, resetInactivityTimer]);
+
+  // Load persistence state (non-auth)
   useEffect(() => {
     const savedScanned = localStorage.getItem('hub_scanned_ids');
     if (savedScanned) {
       try { setScannedTaskIds(new Set(JSON.parse(savedScanned))); } catch (e) {}
     }
-
     const savedAvatars = localStorage.getItem('hub_custom_avatars');
     if (savedAvatars) {
       try { setCustomAvatars(JSON.parse(savedAvatars)); } catch (e) {}
     }
-
     const savedChangedAvatars = localStorage.getItem('hub_changed_avatars');
     if (savedChangedAvatars) {
       try { setChangedAvatarIds(new Set(JSON.parse(savedChangedAvatars))); } catch (e) {}
     }
-
     const savedPromotions = localStorage.getItem('hub_promotions_history');
     if (savedPromotions) {
       try { setPromotions(JSON.parse(savedPromotions)); } catch (e) {}
     }
   }, []);
 
-  // Save to localStorage
-  useEffect(() => {
-    localStorage.setItem('hub_scanned_ids', JSON.stringify(Array.from(scannedTaskIds)));
-  }, [scannedTaskIds]);
-
-  useEffect(() => {
-    localStorage.setItem('hub_custom_avatars', JSON.stringify(customAvatars));
-  }, [customAvatars]);
-
-  useEffect(() => {
-    localStorage.setItem('hub_changed_avatars', JSON.stringify(Array.from(changedAvatarIds)));
-  }, [changedAvatarIds]);
-
-  useEffect(() => {
-    localStorage.setItem('hub_promotions_history', JSON.stringify(promotions));
-  }, [promotions]);
+  // Persist non-session data
+  useEffect(() => { localStorage.setItem('hub_scanned_ids', JSON.stringify(Array.from(scannedTaskIds))); }, [scannedTaskIds]);
+  useEffect(() => { localStorage.setItem('hub_custom_avatars', JSON.stringify(customAvatars)); }, [customAvatars]);
+  useEffect(() => { localStorage.setItem('hub_changed_avatars', JSON.stringify(Array.from(changedAvatarIds))); }, [changedAvatarIds]);
+  useEffect(() => { localStorage.setItem('hub_promotions_history', JSON.stringify(promotions)); }, [promotions]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -115,27 +162,10 @@ const App: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Role categorization helpers
   const checkIsCourier = useCallback((role: string) => {
     const r = role.toLowerCase();
     return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
   }, []);
-
-  // Fix: Added missing isCourier constant to resolve 'Cannot find name isCourier' errors
-  const isCourier = useMemo(() => 
-    currentUser ? checkIsCourier(currentUser.role as string) : false,
-  [currentUser, checkIsCourier]);
-
-  // Initial menu setup
-  useEffect(() => {
-    if (currentUser) {
-      if (checkIsCourier(currentUser.role as string)) {
-        setActiveMenu('tasks');
-      } else {
-        setActiveMenu('dashboard');
-      }
-    }
-  }, [currentUser, checkIsCourier]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,6 +187,8 @@ const App: React.FC = () => {
           }
         }
         setCurrentUser(user);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+        localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
       } else {
         setLoginError('Invalid User ID or Password');
       }
@@ -164,23 +196,13 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setLoginId('');
-    setLoginPwd('');
-    setSelectedEmpForAdjustment(null);
-  };
-
   const handlePromotionSubmission = () => {
     if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser) return;
-
-    // One request constraint: Check if employee already has a pending request
     const hasPending = promotions.some(p => p.employeeId === selectedEmpForAdjustment.id && p.status === 'Pending');
     if (hasPending) {
       alert("Karyawan ini masih memiliki pengajuan tertunda yang menunggu persetujuan Hub Lead.");
       return;
     }
-
     const newRequest: PromotionRequest = {
       id: `adj-${Date.now()}`,
       employeeId: selectedEmpForAdjustment.id,
@@ -190,15 +212,11 @@ const App: React.FC = () => {
       requestedBy: currentUser.name,
       status: 'Pending'
     };
-
     setPromotions(prev => [...prev, newRequest]);
-    
-    // Reset selection state
     setSelectedEmpForAdjustment(null);
     setAdjustmentTargetRole('');
     setAdjustmentType('');
     setSearchEmployeeQuery('');
-    
     alert("Pengajuan telah dikirim ke Hub Lead.");
   };
 
@@ -206,9 +224,7 @@ const App: React.FC = () => {
     setPromotions(prev => prev.map(p => 
       p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
     ));
-    
     if (isApproved) {
-      // Simulate realtime database update by updating the local state
       setAllUsers(prev => prev.map(u => 
         u.id === request.employeeId ? { ...u, role: request.proposedRole } : u
       ));
@@ -268,11 +284,9 @@ const App: React.FC = () => {
     return attendance.filter(a => a.status === attendanceFilter);
   }, [attendance, attendanceFilter]);
 
-  // Derived Filter Options for Employees
   const uniqueStations = useMemo(() => ['All Stations', ...new Set(allUsers.map(u => u.station).filter(Boolean))], [allUsers]);
   const uniqueRoles = useMemo(() => ['All Roles', ...new Set(allUsers.map(u => u.role).filter(Boolean))], [allUsers]);
 
-  // Map avatars to users
   const usersWithAvatars = useMemo(() => {
     return allUsers.map(u => ({
       ...u,
@@ -280,7 +294,6 @@ const App: React.FC = () => {
     }));
   }, [allUsers, customAvatars]);
 
-  // Filtered Employee Data
   const filteredEmployees = useMemo(() => {
     return usersWithAvatars.filter(u => {
       const matchStation = empStationFilter === 'All Stations' || u.station === empStationFilter;
@@ -290,13 +303,8 @@ const App: React.FC = () => {
     });
   }, [usersWithAvatars, empStationFilter, empRoleFilter, empSearch]);
 
-  const courierEmployees = useMemo(() => 
-    filteredEmployees.filter(u => checkIsCourier(u.role as string)),
-  [filteredEmployees, checkIsCourier]);
-
-  const staffEmployees = useMemo(() => 
-    filteredEmployees.filter(u => !checkIsCourier(u.role as string)),
-  [filteredEmployees, checkIsCourier]);
+  const courierEmployees = useMemo(() => filteredEmployees.filter(u => checkIsCourier(u.role as string)), [filteredEmployees, checkIsCourier]);
+  const staffEmployees = useMemo(() => filteredEmployees.filter(u => !checkIsCourier(u.role as string)), [filteredEmployees, checkIsCourier]);
 
   const toggleTaskScanned = (taskId: string) => {
     setScannedTaskIds(prev => {
@@ -309,7 +317,6 @@ const App: React.FC = () => {
 
   const handleAvatarChange = (userId: string, file: File) => {
     if (changedAvatarIds.has(userId)) return;
-
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
@@ -320,7 +327,9 @@ const App: React.FC = () => {
         return next;
       });
       if (currentUser?.id === userId) {
-        setCurrentUser({ ...currentUser, avatarUrl: base64 });
+        const updatedUser = { ...currentUser, avatarUrl: base64 };
+        setCurrentUser(updatedUser);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
       }
     };
     reader.readAsDataURL(file);
@@ -509,7 +518,7 @@ const App: React.FC = () => {
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div><h2 className="text-2xl font-bold text-gray-900">Courier Tasks</h2><p className="text-gray-500 text-sm">Real-time assignment tracking (Grouped by Courier)</p></div>
-                {!isCourier && (
+                {!(currentUser && checkIsCourier(currentUser.role as string)) && (
                   <div className="flex flex-col sm:flex-row items-center gap-3">
                     <div className="relative w-full sm:w-auto"><Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       <select className="pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-full appearance-none" value={taskHubFilter} onChange={(e) => setTaskHubFilter(e.target.value)}>
@@ -529,7 +538,7 @@ const App: React.FC = () => {
               </div>
 
               {(() => {
-                const displayTasks = isCourier 
+                const displayTasks = (currentUser && checkIsCourier(currentUser.role as string))
                   ? tasks.filter(t => t.courierId === currentUser.id) 
                   : filteredTasks;
 
@@ -742,7 +751,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* HUB LEAD ACCESS: Approvals View */}
               {(currentUser.role === Role.HUB_LEAD || currentUser.role.toString().toLowerCase().includes('hub lead')) && (
                 <section className="space-y-6">
                   <div className="flex items-center gap-3">
@@ -810,7 +818,6 @@ const App: React.FC = () => {
                 </section>
               )}
 
-              {/* SHIFT LEAD ACCESS: Personnel Adjustment Form */}
               {(currentUser.role === Role.SHIFT_LEAD || currentUser.role.toString().toLowerCase().includes('shift lead')) && (
                 <section className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                   <div className="lg:col-span-5 space-y-6">
@@ -869,10 +876,7 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest">Informasi Penting</span>
                       </div>
                       <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
-                        Pengajuan perubahan jabatan (Promosi, Demosi, atau Akses) memerlukan persetujuan Hub Lead. 
-                        Data database akan diperbarui otomatis setelah disetujui.
-                        <br /><br />
-                        <span className="text-indigo-600 underline">Catatan:</span> Hanya satu jenis perubahan yang dapat diajukan per karyawan dalam satu waktu.
+                        Pengajuan perubahan jabatan memerlukan persetujuan Hub Lead. 
                       </p>
                     </div>
                   </div>
@@ -911,13 +915,6 @@ const App: React.FC = () => {
                                 <UserMinus className="w-4 h-4" />
                                 Demosi
                               </button>
-                              <button 
-                                onClick={() => setAdjustmentType('ChangeAccess')}
-                                className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-xs font-black sm:col-span-2 ${adjustmentType === 'ChangeAccess' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
-                              >
-                                <ShieldAlert className="w-4 h-4" />
-                                Ubah Akses Sesuai Role
-                              </button>
                             </div>
                           </div>
 
@@ -934,10 +931,6 @@ const App: React.FC = () => {
                                   {Object.values(Role).filter(r => r !== selectedEmpForAdjustment.role && r !== Role.HUB_LEAD).map(role => (
                                     <option key={role} value={role}>{role}</option>
                                   ))}
-                                  {/* Custom roles like workers if they aren't in enum but exist in data */}
-                                  {!Object.values(Role).includes('Shift Worker' as Role) && <option value="Shift Worker">Shift Worker</option>}
-                                  {!Object.values(Role).includes('Daily Worker' as Role) && <option value="Daily Worker">Daily Worker</option>}
-                                  {!Object.values(Role).includes('Admin' as Role) && <option value="Admin">Admin</option>}
                                 </select>
                                 <ChevronRight className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 rotate-90 pointer-events-none" />
                               </div>
@@ -945,29 +938,15 @@ const App: React.FC = () => {
                           )}
 
                           <div className="pt-4 border-t border-gray-50 flex gap-3">
-                            <button 
-                              onClick={() => setSelectedEmpForAdjustment(null)}
-                              className="flex-1 py-4 bg-gray-50 text-gray-500 text-xs font-black uppercase rounded-2xl hover:bg-gray-100 transition-all active:scale-95"
-                            >
-                              Batal
-                            </button>
-                            <button 
-                              onClick={handlePromotionSubmission}
-                              disabled={!adjustmentTargetRole}
-                              className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg ${!adjustmentTargetRole ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700'}`}
-                            >
-                              Ajukan Perubahan
-                            </button>
+                            <button onClick={() => setSelectedEmpForAdjustment(null)} className="flex-1 py-4 bg-gray-50 text-gray-500 text-xs font-black uppercase rounded-2xl hover:bg-gray-100 transition-all active:scale-95">Batal</button>
+                            <button onClick={handlePromotionSubmission} disabled={!adjustmentTargetRole} className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg ${!adjustmentTargetRole ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700'}`}>Ajukan</button>
                           </div>
                         </div>
                       </div>
                     ) : (
                       <div className="h-full min-h-[400px] bg-white rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center p-12 text-center group">
-                        <div className="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
-                          <UsersIcon className="w-12 h-12 text-gray-200" />
-                        </div>
-                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Data Tidak Terpilih</h4>
-                        <p className="text-xs text-gray-300 font-medium max-w-[240px]">Gunakan bilah pencarian di sebelah kiri untuk memilih karyawan.</p>
+                        <div className="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500"><UsersIcon className="w-12 h-12 text-gray-200" /></div>
+                        <h4 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Pilih Karyawan</h4>
                       </div>
                     )}
                   </div>
