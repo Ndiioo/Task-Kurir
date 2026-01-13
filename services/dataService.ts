@@ -1,3 +1,4 @@
+
 import { SHEET_URLS } from '../constants';
 import { AssignTask, User, AttendanceRecord, Role, TaskItem } from '../types';
 
@@ -38,7 +39,6 @@ const parseCSV = (csv: string) => {
 
 /**
  * Fungsi Utama: Menyimpan perubahan data ke Database Spreadsheet.
- * Dipanggil saat terjadi perubahan profil (avatar) atau perubahan role (promosi/demosi).
  */
 export const updateUserInSpreadsheet = async (userId: string, updates: Partial<User>) => {
   try {
@@ -47,11 +47,13 @@ export const updateUserInSpreadsheet = async (userId: string, updates: Partial<U
       return false;
     }
 
-    const response = await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
+    // Menggunakan text/plain agar tidak memicu preflight request yang sering diblokir Google Apps Script
+    // Mode no-cors digunakan karena Google Apps Script tidak mendukung header CORS tradisional pada respons POST
+    await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
       method: 'POST',
-      mode: 'no-cors', // Penting untuk menghindari error CORS pada Google Apps Script
+      mode: 'no-cors',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain',
       },
       body: JSON.stringify({
         action: 'UPDATE_USER',
@@ -61,17 +63,16 @@ export const updateUserInSpreadsheet = async (userId: string, updates: Partial<U
       }),
     });
     
-    console.log(`[Database Sync] Perubahan terkirim untuk ID ${userId}:`, updates);
+    console.log(`[Database Sync] Request terkirim untuk ID ${userId}:`, updates);
     return true;
   } catch (error) {
-    console.error('[Database Sync] Gagal menyimpan ke Spreadsheet:', error);
+    console.error('[Database Sync] Gagal mengirim ke Spreadsheet:', error);
     return false;
   }
 };
 
 export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
   const data = await fetchCSV(SHEET_URLS.TASKS);
-  
   const grouped: Record<string, AssignTask> = {};
 
   data.forEach((d: any) => {
@@ -158,7 +159,7 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || '123456',
     nik: d.NIK || '1234567890',
-    avatarUrl: d.AvatarUrl || d.Avatar || '' // Mendukung pembacaan avatar dari Spreadsheet
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || ''
   })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER));
 
   const staff: User[] = staffData.map((d: any) => ({
@@ -168,7 +169,7 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || 'admin123',
     nik: d.NIK || '0987654321',
-    avatarUrl: d.AvatarUrl || d.Avatar || '' // Mendukung pembacaan avatar dari Spreadsheet
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || ''
   }));
 
   return [...couriers, ...staff];
