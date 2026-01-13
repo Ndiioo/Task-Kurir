@@ -1,6 +1,13 @@
-
 import { SHEET_URLS } from '../constants';
 import { AssignTask, User, AttendanceRecord, Role, TaskItem } from '../types';
+
+// Utility function to normalize IDs (e.g., extracting "12345" from "[12345] Name")
+export const normalizeId = (id: any): string => {
+  if (id === null || id === undefined) return '';
+  const s = id.toString().trim();
+  const match = s.match(/\[(\d+)\]/);
+  return match ? match[1] : s;
+};
 
 export const fetchCSV = async (url: string) => {
   try {
@@ -29,6 +36,39 @@ const parseCSV = (csv: string) => {
   });
 };
 
+/**
+ * Fungsi Utama: Menyimpan perubahan data ke Database Spreadsheet.
+ * Dipanggil saat terjadi perubahan profil (avatar) atau perubahan role (promosi/demosi).
+ */
+export const updateUserInSpreadsheet = async (userId: string, updates: Partial<User>) => {
+  try {
+    if (!SHEET_URLS.UPDATE_ENDPOINT || SHEET_URLS.UPDATE_ENDPOINT.includes('YOUR_SCRIPT_ID')) {
+      console.warn('Update Endpoint Spreadsheet belum dikonfigurasi. Perubahan hanya tersimpan di sesi lokal.');
+      return false;
+    }
+
+    const response = await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors', // Penting untuk menghindari error CORS pada Google Apps Script
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'UPDATE_USER',
+        userId: userId,
+        timestamp: new Date().toISOString(),
+        ...updates
+      }),
+    });
+    
+    console.log(`[Database Sync] Perubahan terkirim untuk ID ${userId}:`, updates);
+    return true;
+  } catch (error) {
+    console.error('[Database Sync] Gagal menyimpan ke Spreadsheet:', error);
+    return false;
+  }
+};
+
 export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
   const data = await fetchCSV(SHEET_URLS.TASKS);
   
@@ -43,10 +83,8 @@ export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
     const hub = (d['Station'] || d.Hub || d._raw[3] || 'Tompobulu Hub').trim();
     const courierName = (d['Nama Kurir'] || d['Nama kurir'] || d.CourierName || d._raw[4] || 'Unknown').trim();
     
-    // Extract ID from bracket format like "[575457] DWINANDA ASHARI"
     const rawFmsId = (d['FMS ID'] || d['Courier ID'] || d.CourierID || d.UserID || d._raw[1] || '').trim();
-    const idMatch = rawFmsId.match(/\[(\d+)\]/);
-    const extractedId = idMatch ? idMatch[1] : rawFmsId;
+    const extractedId = normalizeId(rawFmsId);
 
     const rawOp = (d['Operator'] || d._raw[5] || '').trim();
     const operator = rawOp.includes(']') ? rawOp.split(']')[1].trim() : rawOp;
@@ -83,7 +121,7 @@ export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
 export const getAttendance = async (staffUsers: User[]): Promise<AttendanceRecord[]> => {
   const data = await fetchCSV(SHEET_URLS.ATTENDANCE);
   return data.map((d: any, i: number) => {
-    const opsId = d['Ops ID'] || d._raw[0] || '';
+    const opsId = normalizeId(d['Ops ID'] || d._raw[0] || '');
     const name = d['Nama'] || d._raw[1] || 'Unnamed Staff';
     const rawStatus = (d['Status'] || d._raw[2] || '').trim();
     const location = d['Lokasi'] || d._raw[3] || '-';
@@ -114,21 +152,23 @@ export const getAllUsers = async (): Promise<User[]> => {
   const staffData = await fetchCSV(SHEET_URLS.STAFF_ACCESS);
 
   const couriers: User[] = courierData.map((d: any) => ({
-    id: (d.UserID || d['User ID'] || d['FMS ID'] || 'C000').toString().trim(),
+    id: normalizeId(d.UserID || d['User ID'] || d['FMS ID'] || 'C000'),
     name: d['Nama Lengkap'] || d.Name || d['Nama Kurir'] || 'Courier',
     role: d.Jabatan || Role.COURIER,
     station: d.Station || 'Tompobulu',
     password: d.Password || '123456',
-    nik: d.NIK || '1234567890'
-  })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER)); // Filter out unclear 'Courier' data
+    nik: d.NIK || '1234567890',
+    avatarUrl: d.AvatarUrl || d.Avatar || '' // Mendukung pembacaan avatar dari Spreadsheet
+  })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER));
 
   const staff: User[] = staffData.map((d: any) => ({
-    id: (d.UserID || d['User ID'] || d['Ops ID'] || 'S000').toString().trim(),
+    id: normalizeId(d.UserID || d['User ID'] || d['Ops ID'] || 'S000'),
     name: d['Nama Lengkap'] || d.Name || d['Nama Staff'] || 'Staff',
     role: d.Jabatan || d.Role || Role.OPERATOR,
     station: d.Station || 'Tompobulu',
     password: d.Password || 'admin123',
-    nik: d.NIK || '0987654321'
+    nik: d.NIK || '0987654321',
+    avatarUrl: d.AvatarUrl || d.Avatar || '' // Mendukung pembacaan avatar dari Spreadsheet
   }));
 
   return [...couriers, ...staff];
