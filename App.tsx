@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert } from 'lucide-react';
 import { Role, User, PackageData, AssignTask, AttendanceRecord, PromotionRequest, TaskItem } from './types';
-import { getAllUsers, getTasks, getAttendance } from './services/dataService';
+import { getAllUsers, getTasks, getAttendance, normalizeId, updateUserInSpreadsheet } from './services/dataService';
 import Layout from './components/Layout';
 import EmployeeCard from './components/EmployeeCard';
 import QRCodeModal from './components/QRCodeModal';
@@ -83,9 +83,7 @@ const App: React.FC = () => {
   const resetInactivityTimer = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (currentUser) {
-      // Perbarui timestamp di localStorage untuk persistensi lintas refresh
       localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
-      
       timeoutRef.current = setTimeout(() => {
         handleLogout();
         alert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 5 menit.");
@@ -97,10 +95,8 @@ const App: React.FC = () => {
     if (currentUser) {
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
       const listener = () => resetInactivityTimer();
-      
       events.forEach(event => window.addEventListener(event, listener));
       resetInactivityTimer();
-
       return () => {
         events.forEach(event => window.removeEventListener(event, listener));
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -111,21 +107,13 @@ const App: React.FC = () => {
   // Load persistence state (non-auth)
   useEffect(() => {
     const savedScanned = localStorage.getItem('hub_scanned_ids');
-    if (savedScanned) {
-      try { setScannedTaskIds(new Set(JSON.parse(savedScanned))); } catch (e) {}
-    }
+    if (savedScanned) { try { setScannedTaskIds(new Set(JSON.parse(savedScanned))); } catch (e) {} }
     const savedAvatars = localStorage.getItem('hub_custom_avatars');
-    if (savedAvatars) {
-      try { setCustomAvatars(JSON.parse(savedAvatars)); } catch (e) {}
-    }
+    if (savedAvatars) { try { setCustomAvatars(JSON.parse(savedAvatars)); } catch (e) {} }
     const savedChangedAvatars = localStorage.getItem('hub_changed_avatars');
-    if (savedChangedAvatars) {
-      try { setChangedAvatarIds(new Set(JSON.parse(savedChangedAvatars))); } catch (e) {}
-    }
+    if (savedChangedAvatars) { try { setChangedAvatarIds(new Set(JSON.parse(savedChangedAvatars))); } catch (e) {} }
     const savedPromotions = localStorage.getItem('hub_promotions_history');
-    if (savedPromotions) {
-      try { setPromotions(JSON.parse(savedPromotions)); } catch (e) {}
-    }
+    if (savedPromotions) { try { setPromotions(JSON.parse(savedPromotions)); } catch (e) {} }
   }, []);
 
   // Persist non-session data
@@ -134,21 +122,40 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('hub_changed_avatars', JSON.stringify(Array.from(changedAvatarIds))); }, [changedAvatarIds]);
   useEffect(() => { localStorage.setItem('hub_promotions_history', JSON.stringify(promotions)); }, [promotions]);
 
+  const checkIsCourier = useCallback((role: string) => {
+    const r = role.toLowerCase();
+    return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
+  }, []);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const users = await getAllUsers();
-      const courierList = users.filter(u => {
-        const r = u.role.toString().toLowerCase();
-        return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
-      });
-      const opsList = users.filter(u => !courierList.includes(u));
+      const courierList = users.filter(u => checkIsCourier(u.role.toString()));
+      const opsList = users.filter(u => !checkIsCourier(u.role.toString()));
 
       const [taskData, attData] = await Promise.all([
         getTasks(courierList),
         getAttendance(opsList)
       ]);
-      setAllUsers(users);
+
+      const mergedUsers = [...users];
+      taskData.forEach(tGroup => {
+        if (tGroup.courierId && tGroup.courierId !== 'N/A') {
+          const exists = mergedUsers.some(u => u.id === tGroup.courierId);
+          if (!exists) {
+            mergedUsers.push({
+              id: tGroup.courierId,
+              name: tGroup.courierName,
+              role: tGroup.courierRole || Role.COURIER,
+              station: tGroup.hub || 'Tompobulu Hub',
+              password: '123456'
+            });
+          }
+        }
+      });
+
+      setAllUsers(mergedUsers);
       setTasks(taskData);
       setAttendance(attData);
     } catch (err) {
@@ -156,25 +163,19 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkIsCourier]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const checkIsCourier = useCallback((role: string) => {
-    const r = role.toLowerCase();
-    return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
-  }, []);
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
-    
     setTimeout(() => {
-      const user = allUsers.find(u => u.id === loginId && (u.password === loginPwd || loginPwd === 'admin123'));
-      
+      const normalizedEnteredId = normalizeId(loginId);
+      const user = allUsers.find(u => u.id === normalizedEnteredId && (u.password === loginPwd || loginPwd === 'admin123'));
       if (user) {
         if (checkIsCourier(user.role as string)) {
           const hasTask = tasks.some(t => t.courierId === user.id);
@@ -220,15 +221,63 @@ const App: React.FC = () => {
     alert("Pengajuan telah dikirim ke Hub Lead.");
   };
 
-  const handleApproval = (request: PromotionRequest, isApproved: boolean) => {
+  /**
+   * FITUR: Menyimpan otomatis perubahan Role ke Database Spreadsheet
+   */
+  const handleApproval = async (request: PromotionRequest, isApproved: boolean) => {
+    // 1. Update status pengajuan lokal
     setPromotions(prev => prev.map(p => 
       p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
     ));
+
     if (isApproved) {
+      // 2. Simpan Otomatis ke Spreadsheet (Global)
+      await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
+
+      // 3. Update State Lokal (Agar Ops lain bisa melihat jika sudah disinkronkan)
       setAllUsers(prev => prev.map(u => 
         u.id === request.employeeId ? { ...u, role: request.proposedRole } : u
       ));
+      
+      // 4. Jika yang diupdate adalah user yang sedang login, perbarui session
+      if (currentUser?.id === request.employeeId) {
+        const updatedUser = { ...currentUser, role: request.proposedRole };
+        setCurrentUser(updatedUser);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      }
+
+      alert(`Jabatan ${request.employeeName} telah berhasil diperbarui ke ${request.proposedRole}.`);
     }
+  };
+
+  /**
+   * FITUR: Menyimpan otomatis Avatar ke Database Spreadsheet
+   */
+  const handleAvatarChange = (userId: string, file: File) => {
+    if (changedAvatarIds.has(userId)) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      
+      // 1. Update State Lokal segera (Responsivitas UI)
+      setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
+      setChangedAvatarIds(prev => {
+        const next = new Set(prev);
+        next.add(userId);
+        return next;
+      });
+
+      // 2. Simpan Otomatis ke Spreadsheet (Database Global)
+      await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
+
+      // 3. Update Session jika user sendiri yang ganti
+      if (currentUser?.id === userId) {
+        const updatedUser = { ...currentUser, avatarUrl: base64 };
+        setCurrentUser(updatedUser);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const dashboardStats = useMemo(() => {
@@ -315,24 +364,8 @@ const App: React.FC = () => {
     });
   };
 
-  const handleAvatarChange = (userId: string, file: File) => {
-    if (changedAvatarIds.has(userId)) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
-      setChangedAvatarIds(prev => {
-        const next = new Set(prev);
-        next.add(userId);
-        return next;
-      });
-      if (currentUser?.id === userId) {
-        const updatedUser = { ...currentUser, avatarUrl: base64 };
-        setCurrentUser(updatedUser);
-        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
-      }
-    };
-    reader.readAsDataURL(file);
+  const toggleTaskScannedLocal = (taskId: string) => {
+    toggleTaskScanned(taskId);
   };
 
   const settingsEmployeeSearchResults = useMemo(() => {

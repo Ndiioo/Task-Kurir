@@ -2,13 +2,14 @@
 import { Role } from './types';
 
 export const SHEET_URLS = {
+  // Ganti URL ini dengan URL Web App Google Apps Script Anda untuk mendukung fitur SAVE (POST)
+  UPDATE_ENDPOINT: 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec',
   TASKS: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=1818009061',
   ATTENDANCE: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=961433836',
   COURIER_ACCESS: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=1904625355',
   STAFF_ACCESS: 'https://docs.google.com/spreadsheets/d/1NSFmEGm3i1RgLCt1tSIaP9lYlfe8fnMMrsHeke_ZCiI/export?format=csv&gid=1000003188'
 };
 
-// Fix: Added missing roles to satisfy the Record<Role, string> type constraint
 export const ROLE_COLORS: Record<Role, string> = {
   [Role.COURIER]: 'bg-blue-100 text-blue-800 border-blue-200',
   [Role.OPERATOR]: 'bg-green-100 text-green-800 border-green-200',
