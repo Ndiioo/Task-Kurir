@@ -54,9 +54,9 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
   };
 
   const getNameFontSize = (name: string) => {
-    if (name.length > 25) return 'text-[10px]';
-    if (name.length > 18) return 'text-[12px]';
-    return 'text-[14px]';
+    if (name.length > 25) return 'text-[9px]';
+    if (name.length > 18) return 'text-[11px]';
+    return 'text-[13px]';
   };
 
   const isPremium = theme.id.includes('gold') || theme.id.includes('platinum') || theme.id.includes('obsidian') || theme.id.includes('carbon');
@@ -65,34 +65,34 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
     <div className="flex flex-col items-center group/card">
       <div className="w-[275px] h-[440px] bg-white rounded-[2rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-col items-center">
         
-        {/* Background Gradients - Reduced height */}
+        {/* Background Gradients */}
         <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none">
           <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full opacity-100" style={{ background: `linear-gradient(135deg, ${theme.secondary}, ${theme.primary})` }}></div>
           <div className="absolute -top-10 -right-24 w-64 h-64 rounded-full opacity-100" style={{ background: `linear-gradient(225deg, ${theme.primary}, ${theme.secondary})` }}></div>
-          {isPremium && <div className="absolute top-4 right-4 text-white/20"><Crown className="w-10 h-10" /></div>}
+          {isPremium && <div className="absolute top-4 right-4 text-white/20"><Crown className="w-8 h-8" /></div>}
         </div>
 
-        {/* Brand Header - Compact */}
-        <div className="relative mt-8 mb-4 flex flex-col items-center z-10">
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-lg rounded-full border border-white/20 shadow-sm">
-            <div className="w-6 h-6 rounded-full border-[2px] flex items-center justify-center bg-white shadow-sm" style={{ borderColor: theme.primary }}>
-              <Star className="w-3.5 h-3.5 fill-current" style={{ color: theme.primary }} />
+        {/* Brand Header - More Compact */}
+        <div className="relative mt-6 mb-3 flex flex-col items-center z-10">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-white/15 backdrop-blur-md rounded-full border border-white/20 shadow-sm">
+            <div className="w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center bg-white shadow-sm" style={{ borderColor: theme.primary }}>
+              <Star className="w-2.5 h-2.5 fill-current" style={{ color: theme.primary }} />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-[10px] font-black text-white uppercase tracking-tighter">Tompobulu</span>
-              <span className="text-[9px] font-bold uppercase tracking-tighter text-white/80">Hub Logistik</span>
+              <span className="text-[9px] font-black text-white uppercase tracking-tighter">Tompobulu</span>
+              <span className="text-[8px] font-bold uppercase tracking-tighter text-white/80">Hub Logistik</span>
             </div>
           </div>
         </div>
 
-        {/* Profile Picture Section - Compact */}
+        {/* Profile Picture Section - Tighter spacing */}
         <div className="relative z-10">
-          <div className="w-28 h-28 rounded-full border-[5px] p-1 bg-white shadow-xl overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
+          <div className="w-24 h-24 rounded-full border-[4px] p-0.5 bg-white shadow-xl overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
             {employee.avatarUrl ? (
               <img src={employee.avatarUrl} alt={employee.name} className="w-full h-full object-cover rounded-full" />
             ) : (
               <div className="w-full h-full bg-gray-50 rounded-full flex items-center justify-center">
-                <UserIcon className="w-14 h-14 text-gray-200" />
+                <UserIcon className="w-12 h-12 text-gray-200" />
               </div>
             )}
           </div>
@@ -102,64 +102,64 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 rounded-full shadow-lg border-2 border-white transition-all hover:scale-110 active:scale-95 text-white"
+                className="p-1.5 rounded-full shadow-lg border-2 border-white transition-all hover:scale-110 active:scale-95 text-white"
                 style={{ backgroundColor: isAdminTracer ? '#2563eb' : theme.primary }}
               >
-                <Camera className="w-3.5 h-3.5" />
+                <Camera className="w-3 h-3" />
               </button>
             </div>
           )}
           
           {hasChangedAvatar && (
-            <div className="absolute top-0 left-0 bg-green-500 p-1.5 rounded-full border-2 border-white shadow-md z-20">
-              <CheckCircle2 className="w-3 h-3 text-white" />
+            <div className="absolute top-0 left-0 bg-green-500 p-1 rounded-full border border-white shadow-md z-20">
+              <CheckCircle2 className="w-2.5 h-2.5 text-white" />
             </div>
           )}
         </div>
 
-        {/* Name Plate - Integrated with spacing optimization */}
-        <div className="relative z-10 mt-5 w-[88%]">
-          <div className="py-3 px-3 rounded-[1.25rem] shadow-xl text-center border-b-4 border-black/20" 
+        {/* Name Plate - Reduced padding and margin */}
+        <div className="relative z-10 mt-4 w-[85%]">
+          <div className="py-2 px-2 rounded-[1rem] shadow-lg text-center border-b-2 border-black/10" 
                style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
-            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase tracking-wide drop-shadow-md truncate`}>
+            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase tracking-wide drop-shadow-sm truncate`}>
               {employee.name}
             </h3>
-            <div className="mt-1 flex items-center justify-center gap-1.5">
-              <div className="w-1 h-1 rounded-full bg-white/40"></div>
-              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-white/90">
+            <div className="mt-0.5 flex items-center justify-center gap-1">
+              <div className="w-0.5 h-0.5 rounded-full bg-white/40"></div>
+              <p className="text-[8px] font-black uppercase tracking-[0.1em] text-white/90">
                 {employee.role}
               </p>
-              <div className="w-1 h-1 rounded-full bg-white/40"></div>
+              <div className="w-0.5 h-0.5 rounded-full bg-white/40"></div>
             </div>
           </div>
         </div>
 
-        {/* Detail List - Adjusted for smaller card */}
-        <div className="relative z-10 mt-4 w-full px-7 space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
-            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Employee ID</span>
-            <span className="text-[12px] font-black text-gray-800 font-mono tracking-tighter">
+        {/* Detail List - Tighter spacing */}
+        <div className="relative z-10 mt-3 w-full px-6 space-y-2">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-1">
+            <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Employee ID</span>
+            <span className="text-[11px] font-black text-gray-800 font-mono tracking-tighter">
               {employee.id}
             </span>
           </div>
-          <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
-            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Base Station</span>
-            <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[140px] text-right">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-1">
+            <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Base Station</span>
+            <span className="text-[9px] font-black text-gray-700 uppercase truncate max-w-[130px] text-right">
               {employee.station || 'Tompobulu Hub'}
             </span>
           </div>
         </div>
 
-        {/* Footer Area - Height reduced to 100px to avoid overlapping details */}
-        <div className="absolute bottom-0 left-0 w-full h-[100px] bg-gray-50/90 backdrop-blur-md border-t border-gray-100 flex flex-col items-center justify-center pb-2 z-10">
-          <div className="bg-white p-2 rounded-xl shadow-inner mb-1.5 border border-gray-100">
-            <QRCodeSVG value={employee.id} size={48} fgColor={theme.secondary} />
+        {/* Footer Area - Height adjusted */}
+        <div className="absolute bottom-0 left-0 w-full h-[90px] bg-gray-50/95 backdrop-blur-sm border-t border-gray-100 flex flex-col items-center justify-center pb-2 z-10">
+          <div className="bg-white p-1.5 rounded-lg shadow-inner mb-1 border border-gray-100">
+            <QRCodeSVG value={employee.id} size={40} fgColor={theme.secondary} />
           </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
-            <ShieldCheck className="w-2.5 h-2.5 text-blue-500" />
-            <span className="text-[7px] font-black uppercase tracking-[0.25em]">Authorized Personnel</span>
+          <div className="flex items-center gap-1 text-gray-400">
+            <ShieldCheck className="w-2 h-2 text-blue-500" />
+            <span className="text-[6px] font-black uppercase tracking-[0.2em]">Authorized Personnel</span>
           </div>
-          <p className="text-[6px] text-gray-300 mt-1 uppercase font-bold tracking-widest">© Tompobulu Management v2.5</p>
+          <p className="text-[5px] text-gray-300 mt-0.5 uppercase font-bold tracking-widest">© Design by Ndiioo </p>
         </div>
 
       </div>
