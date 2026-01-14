@@ -15,13 +15,17 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ taskGroup, onClose, scannedTa
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
   const handleCopy = (task: TaskItem) => {
-    // If task is finished, copying is disabled
+    // Jika task sudah selesai scan, fungsi salin dinonaktifkan
     if (scannedTaskIds.has(task.taskId)) return;
 
-    const text = `Task ID: ${task.taskId}\nKurir: ${taskGroup.courierName} (${taskGroup.courierId})\nPaket: ${task.packageCount}\nOperator: ${task.operator}\nStation: ${task.station}\nTanggal: ${task.deliveryDate}`;
-    navigator.clipboard.writeText(text);
-    setCopiedId(task.taskId);
-    setTimeout(() => setCopiedId(null), 2000);
+    // Hanya menyalin Task ID saja ke clipboard sesuai instruksi
+    const text = task.taskId;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(task.taskId);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(err => {
+      console.error('Gagal menyalin Task ID: ', err);
+    });
   };
 
   return (
