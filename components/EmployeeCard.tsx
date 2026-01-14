@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Camera, User as UserIcon, CheckCircle2, AlertTriangle, ShieldCheck, Crown, Star } from 'lucide-react';
+import { Camera, User as UserIcon, CheckCircle2, ShieldCheck, Crown, Star } from 'lucide-react';
 import { User, Role } from '../types';
 
 export interface CardTheme {
@@ -45,8 +45,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
   theme = ID_CARD_THEMES[0]
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const photoCount = employee.photoChangeCount || 0;
-  const isAtLimit = photoCount >= 5;
   const isAdminTracer = currentUserRole === Role.ADMIN_TRACER;
   const canEdit = isCurrentUser || isAdminTracer;
 
@@ -56,40 +54,40 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
   };
 
   const getNameFontSize = (name: string) => {
-    if (name.length > 22) return 'text-[12px]';
-    if (name.length > 15) return 'text-[14px]';
-    return 'text-[16px]';
+    if (name.length > 25) return 'text-[10px]';
+    if (name.length > 18) return 'text-[12px]';
+    return 'text-[14px]';
   };
 
   const isPremium = theme.id.includes('gold') || theme.id.includes('platinum') || theme.id.includes('obsidian') || theme.id.includes('carbon');
 
   return (
     <div className="flex flex-col items-center group/card">
-      <div className="w-[280px] h-[460px] bg-white rounded-[2.5rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-col items-center transition-all duration-300 hover:scale-[1.02]">
+      <div className="w-[275px] h-[440px] bg-white rounded-[2rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-col items-center">
         
-        {/* Background Gradients */}
-        <div className="absolute top-0 left-0 w-full h-36 overflow-hidden pointer-events-none">
+        {/* Background Gradients - Reduced height */}
+        <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none">
           <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full opacity-100" style={{ background: `linear-gradient(135deg, ${theme.secondary}, ${theme.primary})` }}></div>
           <div className="absolute -top-10 -right-24 w-64 h-64 rounded-full opacity-100" style={{ background: `linear-gradient(225deg, ${theme.primary}, ${theme.secondary})` }}></div>
-          {isPremium && <div className="absolute top-5 right-5 text-white/20"><Crown className="w-10 h-10" /></div>}
+          {isPremium && <div className="absolute top-4 right-4 text-white/20"><Crown className="w-10 h-10" /></div>}
         </div>
 
-        {/* Brand Header */}
+        {/* Brand Header - Compact */}
         <div className="relative mt-8 mb-4 flex flex-col items-center z-10">
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20">
-            <div className="w-6 h-6 rounded-full border-[2px] flex items-center justify-center bg-white" style={{ borderColor: theme.primary }}>
-              <Star className="w-3 h-3 fill-current" style={{ color: theme.primary }} />
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-lg rounded-full border border-white/20 shadow-sm">
+            <div className="w-6 h-6 rounded-full border-[2px] flex items-center justify-center bg-white shadow-sm" style={{ borderColor: theme.primary }}>
+              <Star className="w-3.5 h-3.5 fill-current" style={{ color: theme.primary }} />
             </div>
             <div className="flex flex-col leading-none">
               <span className="text-[10px] font-black text-white uppercase tracking-tighter">Tompobulu</span>
-              <span className="text-[9px] font-black uppercase tracking-tighter text-white/80">Hub Logistik</span>
+              <span className="text-[9px] font-bold uppercase tracking-tighter text-white/80">Hub Logistik</span>
             </div>
           </div>
         </div>
 
-        {/* Profile Picture Section */}
+        {/* Profile Picture Section - Compact */}
         <div className="relative z-10">
-          <div className="w-28 h-28 rounded-full border-[5px] p-1 bg-white shadow-xl overflow-hidden flex items-center justify-center transition-transform duration-500 group-hover/card:rotate-3" style={{ borderColor: theme.primary }}>
+          <div className="w-28 h-28 rounded-full border-[5px] p-1 bg-white shadow-xl overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
             {employee.avatarUrl ? (
               <img src={employee.avatarUrl} alt={employee.name} className="w-full h-full object-cover rounded-full" />
             ) : (
@@ -107,7 +105,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
                 className="p-2 rounded-full shadow-lg border-2 border-white transition-all hover:scale-110 active:scale-95 text-white"
                 style={{ backgroundColor: isAdminTracer ? '#2563eb' : theme.primary }}
               >
-                <Camera className="w-4 h-4" />
+                <Camera className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
@@ -119,45 +117,49 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           )}
         </div>
 
-        {/* Name Plate - Integrated with Theme */}
-        <div className="relative z-10 mt-6 w-[88%]">
-          <div className="py-3 px-2 rounded-[1.25rem] shadow-xl text-center border-b-4 border-black/10" 
+        {/* Name Plate - Integrated with spacing optimization */}
+        <div className="relative z-10 mt-5 w-[88%]">
+          <div className="py-3 px-3 rounded-[1.25rem] shadow-xl text-center border-b-4 border-black/20" 
                style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
-            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase tracking-wide drop-shadow-sm truncate`}>
+            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase tracking-wide drop-shadow-md truncate`}>
               {employee.name}
             </h3>
             <div className="mt-1 flex items-center justify-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-white/50"></div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/90">
+              <div className="w-1 h-1 rounded-full bg-white/40"></div>
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-white/90">
                 {employee.role}
               </p>
-              <div className="w-1.5 h-1.5 rounded-full bg-white/50"></div>
+              <div className="w-1 h-1 rounded-full bg-white/40"></div>
             </div>
           </div>
         </div>
 
-        {/* Detail List */}
-        <div className="relative z-10 mt-5 w-full px-6 space-y-3">
+        {/* Detail List - Adjusted for smaller card */}
+        <div className="relative z-10 mt-4 w-full px-7 space-y-3">
           <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
             <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Employee ID</span>
-            <span className="text-sm font-black text-gray-800 font-mono tracking-tighter">{employee.id}</span>
+            <span className="text-[12px] font-black text-gray-800 font-mono tracking-tighter">
+              {employee.id}
+            </span>
           </div>
           <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
             <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Base Station</span>
-            <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[140px] text-right">{employee.station || 'Tompobulu Hub'}</span>
+            <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[140px] text-right">
+              {employee.station || 'Tompobulu Hub'}
+            </span>
           </div>
         </div>
 
-        {/* Security Zone - QR Code area always white for scannability */}
-        <div className="absolute bottom-0 left-0 w-full h-[110px] bg-gray-50/80 backdrop-blur-sm border-t border-gray-100 flex flex-col items-center justify-center py-2 px-4 z-10">
-          <div className="bg-white p-2 rounded-xl shadow-inner mb-1.5">
-            <QRCodeSVG value={employee.id} size={50} fgColor={theme.secondary} />
+        {/* Footer Area - Height reduced to 100px to avoid overlapping details */}
+        <div className="absolute bottom-0 left-0 w-full h-[100px] bg-gray-50/90 backdrop-blur-md border-t border-gray-100 flex flex-col items-center justify-center pb-2 z-10">
+          <div className="bg-white p-2 rounded-xl shadow-inner mb-1.5 border border-gray-100">
+            <QRCodeSVG value={employee.id} size={48} fgColor={theme.secondary} />
           </div>
           <div className="flex items-center gap-1.5 text-gray-400">
-            <ShieldCheck className="w-2.5 h-2.5" />
-            <span className="text-[7px] font-black uppercase tracking-[0.3em]">Authorized Personnel</span>
+            <ShieldCheck className="w-2.5 h-2.5 text-blue-500" />
+            <span className="text-[7px] font-black uppercase tracking-[0.25em]">Authorized Personnel</span>
           </div>
-          <p className="text-[6px] text-gray-300 mt-1 uppercase font-bold">© Tompobulu Management v2.5</p>
+          <p className="text-[6px] text-gray-300 mt-1 uppercase font-bold tracking-widest">© Tompobulu Management v2.5</p>
         </div>
 
       </div>
