@@ -602,7 +602,18 @@ const App: React.FC = () => {
                       <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-blue-600"/> Tema Visual</label><div className="grid grid-cols-5 gap-2">{ID_CARD_THEMES.map((theme) => (<button key={theme.id} onClick={() => setSelectedPrintTheme(theme)} className={`h-8 rounded-lg border-2 transition-all ${selectedPrintTheme.id === theme.id ? 'border-blue-500 shadow-inner' : 'border-transparent shadow-sm'}`} style={{ backgroundColor: theme.primary }}></button>))}</div></div>
                       <button onClick={handlePrint} className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg transition-all active:scale-[0.98]"><Printer className="w-4 h-4" /> Buka Dialog Printer</button>
                     </div>
-                    <div className="lg:col-span-5 flex flex-col items-center"><div className="w-full space-y-4"><div className="flex items-center gap-2 px-1"><Eye className="w-4 h-4 text-blue-600" /><h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Preview Mode</h4></div><div className="bg-gray-200 p-8 rounded-[3rem] border-2 border-dashed border-gray-100 flex items-center justify-center overflow-hidden min-h-[400px]"><div className="bg-white shadow-2xl relative flex items-center justify-center transition-all duration-500 border border-gray-300" style={{ width: `${effectiveDims.w * 2.5}px`, height: `${effectiveDims.h * 2.5}px` }}><div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h) * 0.5})`, transformOrigin: 'center' }}>{printUsers.length > 0 && <EmployeeCard employee={printUsers[0]} isCurrentUser={false} hasChangedAvatar={false} theme={selectedPrintTheme} /></div></div></div></div></div>
+                    <div className="lg:col-span-5 flex flex-col items-center">
+                       <div className="w-full space-y-4">
+                          <div className="flex items-center gap-2 px-1"><Eye className="w-4 h-4 text-blue-600" /><h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Preview Mode</h4></div>
+                          <div className="bg-gray-200 p-8 rounded-[3rem] border-2 border-dashed border-gray-100 flex items-center justify-center overflow-hidden min-h-[400px]">
+                             <div className="bg-white shadow-2xl relative flex items-center justify-center transition-all duration-500 border border-gray-300" style={{ width: `${effectiveDims.w * 2.5}px`, height: `${effectiveDims.h * 2.5}px` }}>
+                                <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h) * 0.5})`, transformOrigin: 'center' }}>
+                                   {printUsers.length > 0 && <EmployeeCard employee={printUsers[0]} isCurrentUser={false} currentUserRole={currentUser.role} hasChangedAvatar={false} theme={selectedPrintTheme} />}
+                                </div>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
                  </div>
               </section>
             </div>
