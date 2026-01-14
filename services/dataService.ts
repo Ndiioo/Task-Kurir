@@ -40,7 +40,8 @@ const parseCSV = (csv: string) => {
 };
 
 /**
- * Fungsi Utama: Menyimpan perubahan data ke Database Spreadsheet.
+ * Menyimpan perubahan data User (termasuk Foto Profil) ke Spreadsheet.
+ * Mengirimkan role agar Apps Script dapat menentukan kolom J (Kurir) atau K (Ops).
  */
 export const updateUserInSpreadsheet = async (userId: string, updates: Partial<User>) => {
   try {
@@ -49,7 +50,6 @@ export const updateUserInSpreadsheet = async (userId: string, updates: Partial<U
       return false;
     }
 
-    // Menggunakan text/plain agar tidak memicu preflight request yang sering diblokir Google Apps Script
     await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
       method: 'POST',
       mode: 'no-cors',
@@ -64,10 +64,39 @@ export const updateUserInSpreadsheet = async (userId: string, updates: Partial<U
       }),
     });
     
-    console.log(`[Database Sync] Request terkirim untuk ID ${userId}:`, updates);
+    console.log(`[Sync Profil] Data terkirim untuk ID ${userId}:`, updates);
     return true;
   } catch (error) {
-    console.error('[Database Sync] Gagal mengirim ke Spreadsheet:', error);
+    console.error('[Sync Profil] Gagal mengirim ke Spreadsheet:', error);
+    return false;
+  }
+};
+
+/**
+ * Menyimpan status "Selesai Scan" ke Spreadsheet (Kolom S).
+ */
+export const updateTaskStatusInSpreadsheet = async (taskId: string, status: 'Scanned' | 'Unscanned') => {
+  try {
+    if (!SHEET_URLS.UPDATE_ENDPOINT) return false;
+
+    await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: JSON.stringify({
+        action: 'UPDATE_TASK_STATUS',
+        taskId: taskId,
+        status: status, // Akan masuk ke kolom S di Spreadsheet
+        timestamp: new Date().toISOString(),
+      }),
+    });
+    
+    console.log(`[Sync Scan] Task ${taskId} diupdate menjadi: ${status}`);
+    return true;
+  } catch (error) {
+    console.error('[Sync Scan] Gagal update status task:', error);
     return false;
   }
 };
@@ -160,7 +189,8 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || '123456',
     nik: d.NIK || '1234567890',
-    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || ''
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || '',
+    photoChangeCount: parseInt(d.PhotoChangeCount || d['Photo Change Count'] || '0')
   })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER));
 
   const staff: User[] = staffData.map((d: any) => ({
@@ -170,7 +200,8 @@ export const getAllUsers = async (): Promise<User[]> => {
     station: d.Station || 'Tompobulu',
     password: d.Password || 'admin123',
     nik: d.NIK || '0987654321',
-    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || ''
+    avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || '',
+    photoChangeCount: parseInt(d.PhotoChangeCount || d['Photo Change Count'] || '0')
   }));
 
   return [...couriers, ...staff];
