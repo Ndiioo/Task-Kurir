@@ -7,11 +7,11 @@ import { User, Role } from '../types';
 export interface CardTheme {
   id: string;
   name: string;
-  primary: string;    // e.g. #e65c2a
-  secondary: string;  // e.g. #8b321a
-  accent: string;     // e.g. #fff7ed
-  textColor: string;  // e.g. #ffffff
-  labelColor: string; // e.g. #orange-100
+  primary: string;
+  secondary: string;
+  accent: string;
+  textColor: string;
+  labelColor: string;
 }
 
 export const ID_CARD_THEMES: CardTheme[] = [
@@ -47,62 +47,49 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const photoCount = employee.photoChangeCount || 0;
   const isAtLimit = photoCount >= 5;
-  
-  // Wewenang edit: Pemilik akun atau Admin Tracer
   const isAdminTracer = currentUserRole === Role.ADMIN_TRACER;
   const canEdit = isCurrentUser || isAdminTracer;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && onAvatarChange) {
-      onAvatarChange(employee.id, file);
-    }
+    if (file && onAvatarChange) onAvatarChange(employee.id, file);
   };
 
   const getNameFontSize = (name: string) => {
-    if (name.length > 25) return 'text-[11px]';
-    if (name.length > 18) return 'text-[13px]';
-    return 'text-[15px]';
+    if (name.length > 22) return 'text-[12px]';
+    if (name.length > 15) return 'text-[14px]';
+    return 'text-[16px]';
   };
 
   const isPremium = theme.id.includes('gold') || theme.id.includes('platinum') || theme.id.includes('obsidian') || theme.id.includes('carbon');
 
   return (
     <div className="flex flex-col items-center group/card">
-      <div className="w-[280px] h-[480px] bg-white rounded-[2.5rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.15)] overflow-hidden relative border border-gray-100 flex flex-col items-center animate-in fade-in duration-500 hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] transition-shadow">
+      <div className="w-[280px] h-[460px] bg-white rounded-[2.5rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-col items-center transition-all duration-300 hover:scale-[1.02]">
         
-        {/* Background Accents */}
-        <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none">
+        {/* Background Gradients */}
+        <div className="absolute top-0 left-0 w-full h-36 overflow-hidden pointer-events-none">
           <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full opacity-100" style={{ background: `linear-gradient(135deg, ${theme.secondary}, ${theme.primary})` }}></div>
           <div className="absolute -top-10 -right-24 w-64 h-64 rounded-full opacity-100" style={{ background: `linear-gradient(225deg, ${theme.primary}, ${theme.secondary})` }}></div>
-          {isPremium && (
-             <div className="absolute top-4 right-4 text-white/20">
-                <Crown className="w-12 h-12" />
-             </div>
-          )}
-        </div>
-
-        <div className="absolute bottom-0 left-0 w-full h-24 overflow-hidden pointer-events-none">
-          <div className="absolute -bottom-12 -right-12 w-44 h-44 rounded-full opacity-100" style={{ background: `linear-gradient(315deg, ${theme.secondary}, ${theme.primary})` }}></div>
-          <div className="absolute -bottom-10 -left-20 w-56 h-56 rounded-full opacity-100" style={{ background: `linear-gradient(45deg, ${theme.primary}, ${theme.secondary})` }}></div>
+          {isPremium && <div className="absolute top-5 right-5 text-white/20"><Crown className="w-10 h-10" /></div>}
         </div>
 
         {/* Brand Header */}
-        <div className="relative mt-8 mb-2 flex flex-col items-center z-10">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full border-[3px] flex items-center justify-center bg-white shadow-sm" style={{ borderColor: theme.primary }}>
-              {isPremium ? <Star className="w-4 h-4 fill-current" style={{ color: theme.primary }} /> : <div className="w-2 h-2 rounded-full" style={{ backgroundColor: theme.primary }}></div>}
+        <div className="relative mt-8 mb-4 flex flex-col items-center z-10">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20">
+            <div className="w-6 h-6 rounded-full border-[2px] flex items-center justify-center bg-white" style={{ borderColor: theme.primary }}>
+              <Star className="w-3 h-3 fill-current" style={{ color: theme.primary }} />
             </div>
             <div className="flex flex-col leading-none">
-              <span className="text-[11px] font-black text-black uppercase tracking-tighter">Tompobulu</span>
-              <span className="text-[11px] font-black uppercase tracking-tighter" style={{ color: theme.secondary }}>Hub Logistik</span>
+              <span className="text-[10px] font-black text-white uppercase tracking-tighter">Tompobulu</span>
+              <span className="text-[9px] font-black uppercase tracking-tighter text-white/80">Hub Logistik</span>
             </div>
           </div>
         </div>
 
-        {/* Profile Picture Frame */}
-        <div className="relative z-10 mt-3">
-          <div className="w-28 h-28 rounded-full border-[5px] p-1 bg-white shadow-md overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
+        {/* Profile Picture Section */}
+        <div className="relative z-10">
+          <div className="w-28 h-28 rounded-full border-[5px] p-1 bg-white shadow-xl overflow-hidden flex items-center justify-center transition-transform duration-500 group-hover/card:rotate-3" style={{ borderColor: theme.primary }}>
             {employee.avatarUrl ? (
               <img src={employee.avatarUrl} alt={employee.name} className="w-full h-full object-cover rounded-full" />
             ) : (
@@ -113,82 +100,66 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           </div>
           
           {canEdit && (
-            <>
+            <div className="absolute bottom-0 right-0 z-20">
               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-              {(!isAtLimit || isAdminTracer) ? (
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-1 right-1 text-white p-2 rounded-full shadow-lg border-2 border-white transition-all z-20 hover:scale-110 active:scale-95"
-                  style={{ backgroundColor: isAdminTracer ? '#2563eb' : theme.primary }}
-                  title={isAdminTracer ? "Admin Edit Foto" : `Ganti Foto (${photoCount}/5)`}
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <div 
-                  className="absolute bottom-1 right-1 bg-red-500 text-white p-2 rounded-full shadow-lg border-2 border-white z-20"
-                  title="Limit Ganti Foto Tercapai (5/5)"
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                </div>
-              )}
-            </>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-full shadow-lg border-2 border-white transition-all hover:scale-110 active:scale-95 text-white"
+                style={{ backgroundColor: isAdminTracer ? '#2563eb' : theme.primary }}
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            </div>
           )}
-
-          {canEdit && hasChangedAvatar && !isAtLimit && (
-            <div className="absolute bottom-1 left-1 bg-green-500 text-white p-1.5 rounded-full shadow-lg border-2 border-white z-20">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+          
+          {hasChangedAvatar && (
+            <div className="absolute top-0 left-0 bg-green-500 p-1.5 rounded-full border-2 border-white shadow-md z-20">
+              <CheckCircle2 className="w-3 h-3 text-white" />
             </div>
           )}
         </div>
 
-        {/* Name Plate Section */}
-        <div className="relative z-10 mt-6 w-[85%]">
-          <div className="py-3 px-4 rounded-[1.5rem] border-[2px] shadow-lg text-center min-h-[64px] flex flex-col justify-center transition-transform group-hover/card:scale-105" 
-               style={{ background: `linear-gradient(to bottom right, ${theme.primary}, ${theme.secondary})`, borderColor: theme.accent }}>
-            <h3 className={`${getNameFontSize(employee.name)} font-black leading-tight uppercase tracking-tight`} style={{ color: theme.textColor }}>
+        {/* Name Plate - Integrated with Theme */}
+        <div className="relative z-10 mt-6 w-[88%]">
+          <div className="py-3 px-2 rounded-[1.25rem] shadow-xl text-center border-b-4 border-black/10" 
+               style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
+            <h3 className={`${getNameFontSize(employee.name)} font-black text-white leading-tight uppercase tracking-wide drop-shadow-sm truncate`}>
               {employee.name}
             </h3>
-            <p className="text-[9px] font-black uppercase mt-1 tracking-[0.15em] opacity-90" style={{ color: theme.labelColor }}>
-              {employee.role}
-            </p>
+            <div className="mt-1 flex items-center justify-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-white/50"></div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/90">
+                {employee.role}
+              </p>
+              <div className="w-1.5 h-1.5 rounded-full bg-white/50"></div>
+            </div>
           </div>
         </div>
 
-        {/* Detailed Information Section */}
-        <div className="relative z-10 mt-6 flex flex-col items-center w-full px-4 gap-4 text-center">
-          <div className="flex flex-col">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-0.5">FMS USER ID</span>
-            <span className="text-base font-black text-gray-800 font-mono leading-none tracking-tight">{employee.id}</span>
+        {/* Detail List */}
+        <div className="relative z-10 mt-5 w-full px-6 space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Employee ID</span>
+            <span className="text-sm font-black text-gray-800 font-mono tracking-tighter">{employee.id}</span>
           </div>
-          
-          <div className="flex flex-col">
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-0.5">NOMOR NIK</span>
-            <span className="text-[12px] font-black text-gray-700 leading-none">
-              {employee.nik || '730603xxxxxxxxxx'}
-            </span>
-          </div>
-
-          <div className="flex flex-col group/station">
-             <span className="text-[9px] font-black uppercase tracking-[0.2em] mb-0.5" style={{ color: theme.primary }}>BASE STATION HUB</span>
-             <span className="text-[12px] font-black text-blue-700 leading-none truncate max-w-[220px]">
-               {employee.station || 'Tompobulu Hub'}
-             </span>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Base Station</span>
+            <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[140px] text-right">{employee.station || 'Tompobulu Hub'}</span>
           </div>
         </div>
 
-        {/* QR Code Section */}
-        <div className="relative z-10 mt-auto mb-12 bg-white p-2 rounded-xl border border-gray-100 shadow-sm flex flex-col items-center transition-all group-hover/card:shadow-md">
-          <QRCodeSVG value={employee.id} size={64} fgColor={theme.secondary} />
-          <div className="flex items-center gap-1 mt-1.5 opacity-50">
-             <ShieldCheck className="w-2 h-2" style={{ color: theme.primary }} />
-             <span className="text-[6px] font-mono text-gray-500 uppercase tracking-[0.2em]">Verified Secure</span>
+        {/* Security Zone - QR Code area always white for scannability */}
+        <div className="absolute bottom-0 left-0 w-full h-[110px] bg-gray-50/80 backdrop-blur-sm border-t border-gray-100 flex flex-col items-center justify-center py-2 px-4 z-10">
+          <div className="bg-white p-2 rounded-xl shadow-inner mb-1.5">
+            <QRCodeSVG value={employee.id} size={50} fgColor={theme.secondary} />
           </div>
+          <div className="flex items-center gap-1.5 text-gray-400">
+            <ShieldCheck className="w-2.5 h-2.5" />
+            <span className="text-[7px] font-black uppercase tracking-[0.3em]">Authorized Personnel</span>
+          </div>
+          <p className="text-[6px] text-gray-300 mt-1 uppercase font-bold">© Tompobulu Management v2.5</p>
         </div>
 
-        <div className="absolute bottom-3 z-10 opacity-30">
-          <span className="text-[7px] font-bold uppercase tracking-[0.3em]" style={{ color: theme.secondary }}>tompobulu.management-v2</span>
-        </div>
       </div>
     </div>
   );
