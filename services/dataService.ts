@@ -2,7 +2,6 @@
 import { SHEET_URLS } from '../constants';
 import { AssignTask, User, AttendanceRecord, Role, TaskItem } from '../types';
 
-// Utility function to normalize IDs (e.g., extracting "12345" from "[12345] Name")
 export const normalizeId = (id: any): string => {
   if (id === null || id === undefined) return '';
   const s = id.toString().trim();
@@ -12,7 +11,6 @@ export const normalizeId = (id: any): string => {
 
 export const fetchCSV = async (url: string) => {
   try {
-    // Menambahkan cache buster untuk meminimalkan jeda cache Google (default 5 menit)
     const cacheBuster = `&cache_bust=${Date.now()}`;
     const response = await fetch(url + cacheBuster);
     const text = await response.text();
@@ -39,23 +37,13 @@ const parseCSV = (csv: string) => {
   });
 };
 
-/**
- * Menyimpan perubahan data User (termasuk Foto Profil) ke Spreadsheet.
- * Mengirimkan role agar Apps Script dapat menentukan kolom J (Kurir) atau K (Ops).
- */
 export const updateUserInSpreadsheet = async (userId: string, updates: Partial<User>) => {
   try {
-    if (!SHEET_URLS.UPDATE_ENDPOINT) {
-      console.warn('Update Endpoint Spreadsheet belum dikonfigurasi.');
-      return false;
-    }
-
+    if (!SHEET_URLS.UPDATE_ENDPOINT) return false;
     await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
       method: 'POST',
       mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain',
-      },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'UPDATE_USER',
         userId: userId,
@@ -63,40 +51,53 @@ export const updateUserInSpreadsheet = async (userId: string, updates: Partial<U
         ...updates
       }),
     });
-    
-    console.log(`[Sync Profil] Data terkirim untuk ID ${userId}:`, updates);
     return true;
   } catch (error) {
-    console.error('[Sync Profil] Gagal mengirim ke Spreadsheet:', error);
+    console.error('Update failed:', error);
     return false;
   }
 };
 
 /**
- * Menyimpan status "Selesai Scan" ke Spreadsheet (Kolom S).
+ * Merekam aktivitas perubahan ke sheet "Perubahan Data Aplikasi"
  */
-export const updateTaskStatusInSpreadsheet = async (taskId: string, status: 'Scanned' | 'Unscanned') => {
+export const logActivityToSpreadsheet = async (activity: any) => {
   try {
     if (!SHEET_URLS.UPDATE_ENDPOINT) return false;
-
     await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
       method: 'POST',
       mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain',
-      },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
-        action: 'UPDATE_TASK_STATUS',
-        taskId: taskId,
-        status: status, // Akan masuk ke kolom S di Spreadsheet
+        action: 'LOG_ACTIVITY',
+        sheetName: 'Perubahan Data Aplikasi',
+        ...activity,
         timestamp: new Date().toISOString(),
       }),
     });
-    
-    console.log(`[Sync Scan] Task ${taskId} diupdate menjadi: ${status}`);
     return true;
   } catch (error) {
-    console.error('[Sync Scan] Gagal update status task:', error);
+    console.error('Logging failed:', error);
+    return false;
+  }
+};
+
+export const updateTaskStatusInSpreadsheet = async (taskId: string, status: 'Scanned' | 'Unscanned') => {
+  try {
+    if (!SHEET_URLS.UPDATE_ENDPOINT) return false;
+    await fetch(SHEET_URLS.UPDATE_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'UPDATE_TASK_STATUS',
+        taskId: taskId,
+        status: status,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+    return true;
+  } catch (error) {
     return false;
   }
 };
@@ -104,25 +105,19 @@ export const updateTaskStatusInSpreadsheet = async (taskId: string, status: 'Sca
 export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
   const data = await fetchCSV(SHEET_URLS.TASKS);
   const grouped: Record<string, AssignTask> = {};
-
   data.forEach((d: any) => {
     const pkgCount = parseInt(d['Jumlah Paket'] || d.PackageCount || d['Package Count'] || d._raw[2] || '0');
     if (isNaN(pkgCount) || pkgCount <= 0) return;
-
     const taskId = (d['Task ID'] || d.TaskID || d._raw[0] || '').trim();
     const deliveryDate = (d['Delivery Date'] || d._raw[1] || '').trim();
     const hub = (d['Station'] || d.Hub || d._raw[3] || 'Tompobulu Hub').trim();
     const courierName = (d['Nama Kurir'] || d['Nama kurir'] || d.CourierName || d._raw[4] || 'Unknown').trim();
-    
     const rawFmsId = (d['FMS ID'] || d['Courier ID'] || d.CourierID || d.UserID || d._raw[1] || '').trim();
     const extractedId = normalizeId(rawFmsId);
-
     const rawOp = (d['Operator'] || d._raw[5] || '').trim();
     const operator = rawOp.includes(']') ? rawOp.split(']')[1].trim() : rawOp;
-
     if (!taskId) return;
     const groupId = extractedId || courierName;
-
     if (!grouped[groupId]) {
       const courier = couriers.find(c => c.id === extractedId || c.name === courierName);
       grouped[groupId] = {
@@ -134,18 +129,12 @@ export const getTasks = async (couriers: User[]): Promise<AssignTask[]> => {
         tasks: []
       };
     }
-
     grouped[groupId].totalPackages += pkgCount;
     grouped[groupId].tasks.push({
-      taskId: taskId,
-      packageCount: pkgCount,
-      deliveryDate: deliveryDate,
-      operator: operator || 'Hub Staff',
-      station: hub,
-      isScanned: false
+      taskId: taskId, packageCount: pkgCount, deliveryDate: deliveryDate,
+      operator: operator || 'Hub Staff', station: hub, isScanned: false
     });
   });
-
   return Object.values(grouped);
 };
 
@@ -158,22 +147,11 @@ export const getAttendance = async (staffUsers: User[]): Promise<AttendanceRecor
     const location = d['Lokasi'] || d._raw[3] || '-';
     const shift = d['Shift'] || d._raw[4] || '-';
     const remarks = d['Keterangan'] || d._raw[5] || '';
-    
-    const isPresent = rawStatus.toLowerCase() === 'hadir';
-    const status = isPresent ? 'Hadir' : 'Off';
-    
+    const status = rawStatus.toLowerCase() === 'hadir' ? 'Hadir' : 'Off';
     const user = staffUsers.find(u => u.name.toLowerCase() === name.toLowerCase() || u.id === opsId);
-
     return {
-      id: `att-${i}`,
-      opsId: opsId,
-      name: name,
-      shift: shift,
-      location: location,
-      date: new Date().toLocaleDateString(),
-      status: status,
-      role: user?.role || 'Operator',
-      remarks: remarks
+      id: `att-${i}`, opsId, name, shift, location, date: new Date().toLocaleDateString(),
+      status, role: user?.role || 'Operator', remarks
     };
   });
 };
@@ -181,7 +159,6 @@ export const getAttendance = async (staffUsers: User[]): Promise<AttendanceRecor
 export const getAllUsers = async (): Promise<User[]> => {
   const courierData = await fetchCSV(SHEET_URLS.COURIER_ACCESS);
   const staffData = await fetchCSV(SHEET_URLS.STAFF_ACCESS);
-
   const couriers: User[] = courierData.map((d: any) => ({
     id: normalizeId(d.UserID || d['User ID'] || d['FMS ID'] || 'C000'),
     name: d['Nama Lengkap'] || d.Name || d['Nama Kurir'] || 'Courier',
@@ -192,7 +169,6 @@ export const getAllUsers = async (): Promise<User[]> => {
     avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || '',
     photoChangeCount: parseInt(d.PhotoChangeCount || d['Photo Change Count'] || '0')
   })).filter(u => !(u.name === 'Courier' && u.role === Role.COURIER));
-
   const staff: User[] = staffData.map((d: any) => ({
     id: normalizeId(d.UserID || d['User ID'] || d['Ops ID'] || 'S000'),
     name: d['Nama Lengkap'] || d.Name || d['Nama Staff'] || 'Staff',
@@ -203,6 +179,5 @@ export const getAllUsers = async (): Promise<User[]> => {
     avatarUrl: d.AvatarUrl || d.Avatar || d['Avatar Url'] || d.Foto || '',
     photoChangeCount: parseInt(d.PhotoChangeCount || d['Photo Change Count'] || '0')
   }));
-
   return [...couriers, ...staff];
 };
