@@ -178,7 +178,6 @@ const App: React.FC = () => {
     const userToUpdate = allUsers.find(u => u.id === userId) || currentUser;
     const currentCount = userToUpdate?.photoChangeCount || 0;
     
-    // Khusus Admin Tracer: bypass limit cek
     const isAdminTracer = currentUser?.role === Role.ADMIN_TRACER;
 
     if (!isAdminTracer && currentCount >= 5) {
@@ -270,14 +269,12 @@ const App: React.FC = () => {
         await logActivityToSpreadsheet({ ...updatedReq, action: 'VERIFIED_SL', approver: currentUser.name });
         alert(`Verifikasi Shift Lead Berhasil. Teruskan kode ini ke Hub Lead: ${nextCode}`);
       } else if (req.status === 'Verified_SL' && currentUser.role === Role.HUB_LEAD) {
-        // Tandai sebagai disetujui di log segera
         const approvedReq: PromotionRequest = { ...req, status: 'Approved' };
         setPromotions(prev => prev.map(p => p.id === req.id ? approvedReq : p));
         await logActivityToSpreadsheet({ ...approvedReq, action: 'APPROVED_HL', approver: currentUser.name });
         
         alert("Persetujuan Hub Lead Berhasil. Sistem sedang melakukan pencocokan device dan sinkronisasi database. Perubahan akan aktif otomatis dalam 5 menit.");
 
-        // Jeda 5 menit sebelum menerapkan perubahan fungsional
         setTimeout(async () => {
           if (req.type === 'ResetPhotoLimit') {
             await updateUserInSpreadsheet(req.employeeId, { photoChangeCount: 0 });
@@ -289,7 +286,6 @@ const App: React.FC = () => {
             await updateUserInSpreadsheet(req.employeeId, { role: req.proposedRole });
             setAllUsers(prev => prev.map(u => u.id === req.employeeId ? { ...u, role: req.proposedRole } : u));
           }
-          console.log(`[System] Perubahan untuk ${req.employeeName} (Type: ${req.type}) telah aktif setelah delay 5 menit.`);
         }, 5 * 60 * 1000);
 
       } else { alert("Wewenang tidak sesuai."); }
@@ -357,21 +353,18 @@ const App: React.FC = () => {
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Password</label>
               <input type="password" value={loginPwd} onChange={(e) => setLoginPwd(e.target.value)} placeholder="••••••••" className="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none transition-all font-bold" required />
             </div>
-            
             {loginError && (
               <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3 animate-in shake duration-300">
                 <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
                 <p className="text-xs font-bold text-red-600 leading-tight whitespace-pre-wrap">{loginError}</p>
               </div>
             )}
-            
             {isSystemLoading && !loginError && (
               <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
                 <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                 <p className="text-xs font-bold text-blue-600">Menghubungkan ke server hub...</p>
               </div>
             )}
-
             <button 
               type="submit" 
               disabled={isLoggingIn || isSystemLoading} 
@@ -381,13 +374,7 @@ const App: React.FC = () => {
                   : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 active:scale-95'
               }`}
             >
-              {isLoggingIn ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : isSystemLoading ? (
-                'Syncing Hub...'
-              ) : (
-                <><LogOut className="w-5 h-5 rotate-180" /> Login to System</>
-              )}
+              {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : isSystemLoading ? 'Syncing Hub...' : <><LogOut className="w-5 h-5 rotate-180" /> Login to System</>}
             </button>
           </form>
           <div className="mt-8 pt-6 border-t border-gray-100 text-center">
@@ -414,7 +401,15 @@ const App: React.FC = () => {
         @media print { body * { visibility: hidden; } #printable-area, #printable-area * { visibility: visible; } #printable-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; } .no-print { display: none !important; } @page { size: ${effectiveDims.w}mm ${effectiveDims.h}mm; margin: 0; } .print-card-container { width: ${effectiveDims.w}mm; height: ${effectiveDims.h}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: white; page-break-after: always; } }
       `}</style>
 
-      <div id="printable-area" className="hidden print:block bg-white">{printUsers.map(u => (<div key={u.id} className="print-card-container"><div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h)})`, transformOrigin: 'center' }}><EmployeeCard employee={u} isCurrentUser={false} currentUserRole={currentUser.role} hasChangedAvatar={false} theme={selectedPrintTheme} /></div></div>))}</div>
+      <div id="printable-area" className="hidden print:block bg-white">
+        {printUsers.map(u => (
+          <div key={u.id} className="print-card-container">
+            <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h)})`, transformOrigin: 'center' }}>
+              <EmployeeCard employee={u} isCurrentUser={false} currentUserRole={currentUser.role} hasChangedAvatar={false} theme={selectedPrintTheme} />
+            </div>
+          </div>
+        ))}
+      </div>
 
       {isLoading ? (<div className="h-full flex flex-col items-center justify-center gap-4 py-12"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div><p className="text-gray-500 font-medium tracking-widest uppercase text-xs">Syncing Hub Engine...</p></div>) : (
         <>
@@ -428,19 +423,12 @@ const App: React.FC = () => {
           {activeMenu === 'tasks' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                     <h2 className="text-2xl font-bold text-gray-900">Courier Tasks</h2>
-                     <p className="text-gray-500 text-sm">{checkIsCourier(currentUser.role as string) ? 'Tugas pengantaran harian Anda' : 'Real-time assignment tracking'}</p>
-                  </div>
+                  <div><h2 className="text-2xl font-bold text-gray-900">Courier Tasks</h2><p className="text-gray-500 text-sm">{checkIsCourier(currentUser.role as string) ? 'Tugas pengantaran harian Anda' : 'Real-time assignment tracking'}</p></div>
                   {!checkIsCourier(currentUser.role as string) && (
                      <div className="flex items-center gap-3">
                         <div className="relative">
                            <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                           <select 
-                              value={taskHubFilter} 
-                              onChange={(e) => setTaskHubFilter(e.target.value)}
-                              className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase shadow-sm outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[160px]"
-                           >
+                           <select value={taskHubFilter} onChange={(e) => setTaskHubFilter(e.target.value)} className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase shadow-sm outline-none appearance-none min-w-[160px]">
                               {hubOptions.map(hub => <option key={hub} value={hub}>{hub}</option>)}
                            </select>
                         </div>
@@ -449,12 +437,6 @@ const App: React.FC = () => {
                </div>
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{filteredTasks.map((tG, idx) => { const rC = ROLE_COLORS[tG.courierRole as Role] || 'bg-white border-gray-100'; return (<div key={idx} onClick={() => setSelectedTaskGroup(tG)} className={`p-5 rounded-[2rem] border-2 transition-all cursor-pointer hover:shadow-xl active:scale-[0.98] ${rC.replace('text-', 'border-')}`}><div className="mb-4 flex justify-between items-start"><div><h4 className="text-xl font-black text-gray-900 leading-tight">{tG.courierName}</h4><span className="text-[10px] text-gray-400 font-mono tracking-widest">FMS: {tG.courierId}</span></div><span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${rC}`}>{tG.courierRole}</span></div><div className="p-4 rounded-2xl mb-4 bg-gray-50 bg-opacity-40 flex justify-between items-center"><div><span className="text-3xl font-black text-gray-900">{tG.totalPackages}</span><p className="text-[9px] uppercase font-black text-gray-500 tracking-widest">Total Paket</p></div><Package className="w-8 h-8 text-gray-300" /></div><div className="flex justify-between items-center pt-2 border-t border-gray-50"><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{tG.hub}</span><div className="text-blue-600 font-black text-xs flex items-center gap-1">Detail <ChevronRight className="w-4 h-4" /></div></div></div>); })}</div>
                {selectedTaskGroup && (<QRCodeModal taskGroup={selectedTaskGroup} onClose={() => setSelectedTaskGroup(null)} scannedTaskIds={scannedTaskIds} onToggleScan={(id) => { const n = new Set(scannedTaskIds); if (n.has(id)) n.delete(id); else n.add(id); setScannedTaskIds(n); updateTaskStatusInSpreadsheet(id, n.has(id) ? 'Scanned' : 'Unscanned'); }} />)}
-               {filteredTasks.length === 0 && (
-                 <div className="py-24 text-center">
-                    <ClipboardList className="w-16 h-16 text-gray-100 mx-auto mb-4" />
-                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Tidak ada data penugasan</p>
-                 </div>
-               )}
             </div>
           )}
 
@@ -475,93 +457,26 @@ const App: React.FC = () => {
           {activeMenu === 'settings' && (
             <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10 py-4 pb-24">
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-100 pb-6"><div><h2 className="text-2xl font-black text-gray-900 tracking-tight">Hub Management</h2><p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Workflow Perubahan Data Personel</p></div><div className="bg-blue-600 text-white px-4 py-2 rounded-2xl flex items-center gap-2 shadow-lg"><ShieldAlert className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">{currentUser.role} Control Panel</span></div></div>
-
               <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6 relative overflow-hidden">
-                <div className="flex items-center gap-3 border-b border-gray-50 pb-6">
-                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center"><Key className="w-6 h-6 text-indigo-600" /></div>
-                  <div><h3 className="text-lg font-black text-gray-900 leading-none">Approval Center</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Submit Kode Unik Verifikasi</p></div>
-                </div>
-                
+                <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center"><Key className="w-6 h-6 text-indigo-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Approval Center</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Submit Kode Unik Verifikasi</p></div></div>
                 {pendingReview ? (
                    <div className="p-6 bg-indigo-50 rounded-[2rem] border-2 border-indigo-200 animate-in zoom-in duration-300">
                       <div className="flex justify-between items-start mb-6">
-                         <div>
-                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Meninjau Permintaan</span>
-                            <h4 className="text-xl font-black text-indigo-900 mt-1">{pendingReview.employeeName}</h4>
-                            <p className="text-[10px] font-bold text-indigo-600 uppercase mt-1 tracking-tighter">ID: {pendingReview.employeeId} • TIPE: {pendingReview.type}</p>
-                         </div>
-                         <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-indigo-100">
-                            <span className="text-[10px] font-black text-gray-400 uppercase block">Requested By</span>
-                            <span className="text-xs font-black text-indigo-600">{pendingReview.requestedBy}</span>
-                         </div>
+                         <div><span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Meninjau Permintaan</span><h4 className="text-xl font-black text-indigo-900 mt-1">{pendingReview.employeeName}</h4><p className="text-[10px] font-bold text-indigo-600 uppercase mt-1 tracking-tighter">ID: {pendingReview.employeeId} • TIPE: {pendingReview.type}</p></div>
+                         <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-indigo-100"><span className="text-[10px] font-black text-gray-400 uppercase block">Requested By</span><span className="text-xs font-black text-indigo-600">{pendingReview.requestedBy}</span></div>
                       </div>
-                      <div className="bg-white p-4 rounded-2xl mb-6 border border-indigo-100">
-                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Target Perubahan:</p>
-                         <p className="text-sm font-black text-gray-900">{pendingReview.proposedRole}</p>
-                      </div>
+                      <div className="bg-white p-4 rounded-2xl mb-6 border border-indigo-100"><p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Target Perubahan:</p><p className="text-sm font-black text-gray-900">{pendingReview.proposedRole}</p></div>
                       <div className="flex gap-3">
-                         <button disabled={isVerifying} onClick={() => processReview(false)} className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black uppercase tracking-widest text-xs border border-red-100 hover:bg-red-50 transition-all flex items-center justify-center gap-2">
-                           <X className="w-4 h-4" /> Tolak Request
-                         </button>
-                         <button disabled={isVerifying} onClick={() => processReview(true)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
-                           {isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Setujui & Proses
-                         </button>
+                         <button disabled={isVerifying} onClick={() => processReview(false)} className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black uppercase text-xs border border-red-100 hover:bg-red-50">Tolak Request</button>
+                         <button disabled={isVerifying} onClick={() => processReview(true)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-100 hover:bg-indigo-700">{isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Setujui & Proses</button>
                       </div>
                    </div>
                 ) : (
                   <div className="flex flex-col md:flex-row items-end gap-4">
-                    <div className="flex-1 space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Input Kode Unik (Format: SL-XXXX atau HL-XXXX)</label>
-                      <div className="relative">
-                        <Hash className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
-                        <input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="CONTOH: SL-AB12CD" className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none transition-all font-black text-sm uppercase tracking-widest text-gray-700" />
-                      </div>
-                    </div>
-                    <button onClick={handleCodeVerification} disabled={!verificationInput.trim()} className="h-[60px] px-8 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-indigo-700 shadow-lg active:scale-95 disabled:bg-gray-200 transition-all">
-                      <Send className="w-4 h-4" /> Cek Kode
-                    </button>
+                    <div className="flex-1 space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Input Kode Unik</label><div className="relative"><Hash className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" /><input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="CONTOH: SL-AB12CD" className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none uppercase font-black text-sm" /></div></div>
+                    <button onClick={handleCodeVerification} disabled={!verificationInput.trim()} className="h-[60px] px-8 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-indigo-700 shadow-lg">Cek Kode</button>
                   </div>
                 )}
-              </section>
-
-              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-gray-50 pb-6">
-                  <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center"><ClipboardList className="w-6 h-6 text-orange-600" /></div>
-                  <div><h3 className="text-lg font-black text-gray-900 leading-none">Daftar Kode Aktif</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Monitoring Pengajuan & Log Perubahan</p></div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50">
-                        <th className="py-4 px-2">Karyawan</th>
-                        <th className="py-4 px-2">Type</th>
-                        <th className="py-4 px-2">Kode SL</th>
-                        <th className="py-4 px-2">Kode HL</th>
-                        <th className="py-4 px-2">Status</th>
-                        <th className="py-4 px-2">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {promotions.slice().reverse().slice(0, 10).map(req => (
-                        <tr key={req.id} className="text-xs">
-                          <td className="py-4 px-2"><p className="font-black text-gray-800">{req.employeeName}</p><p className="text-[9px] text-gray-400 uppercase">{req.employeeId}</p></td>
-                          <td className="py-4 px-2 font-bold text-gray-500 uppercase text-[10px]">{req.type}</td>
-                          <td className="py-4 px-2 font-mono font-black text-indigo-600">{req.verificationCode || '-'}</td>
-                          <td className="py-4 px-2 font-mono font-black text-purple-600">{req.nextVerificationCode || '-'}</td>
-                          <td className="py-4 px-2">
-                             <span className={`px-2 py-1 rounded-full font-black uppercase text-[8px] ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : req.status === 'Verified_SL' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                {req.status}
-                             </span>
-                          </td>
-                          <td className="py-4 px-2">
-                             <button onClick={() => { navigator.clipboard.writeText(req.verificationCode || ''); alert("Kode SL disalin."); }} className="p-2 text-gray-400 hover:text-blue-600 transition-all"><Clipboard className="w-3.5 h-3.5" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                      {promotions.length === 0 && (<tr><td colSpan={6} className="py-12 text-center text-gray-300 font-black uppercase tracking-widest text-[10px]">Belum ada pengajuan</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
               </section>
 
               {isManagementAllowed(currentUser.role) && (
@@ -597,7 +512,7 @@ const App: React.FC = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Filter Jabatan</label><select value={printRoleFilter} onChange={(e) => { setPrintRoleFilter(e.target.value); setPrintEmployeeId('All'); }} className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none font-bold text-sm outline-none">{uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pilih Karyawan</label><select value={printEmployeeId} onChange={(e) => setPrintEmployeeId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none font-bold text-sm outline-none"><option value="All">Semua ({printRoleFilter})</option>{usersWithAvatars.filter(u => printRoleFilter === 'All Roles' || u.role === printRoleFilter).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div></div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-600"/> Pilihan Kertas</label><div className="grid grid-cols-1 gap-2">{PAPER_PRESETS.map((paper) => (<button key={paper.id} onClick={() => setSelectedPaperPreset(paper)} className={`p-3 rounded-xl border-2 text-left transition-all ${selectedPaperPreset.id === paper.id ? 'border-blue-600 bg-blue-50' : 'border-gray-100 bg-white hover:border-blue-200'}`}><p className="text-[11px] font-black text-gray-900 leading-none mb-1">{paper.name}</p><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{paper.width}mm x {paper.height}mm</p></button>))}</div></div>
-                        <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Maximize className="w-3.5 h-3.5 text-blue-600"/> Orientasi & Skala</label><div className="grid grid-cols-2 gap-2"><button onClick={() => setPaperOrientation('portrait')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'portrait' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Smartphone className="w-6 h-6" /><span className="text-[10px] font-black uppercase tracking-widest">Portrait</span></button><button onClick={() => setPaperOrientation('landscape')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'landscape' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Tablet className="w-6 h-6 rotate-90" /><span className="text-[10px] font-black uppercase tracking-widest">Landscape</span></button></div><div className="mt-6 flex items-center gap-3 p-4 bg-orange-50 rounded-2xl border border-orange-100"><Maximize className="w-5 h-5 text-orange-600" /><div className="flex-1"><p className="text-[11px] font-black text-orange-800 uppercase leading-none">Fit to Paper</p><p className="text-[9px] text-orange-600 font-bold mt-1">Skala kartu otomatis.</p></div><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" className="sr-only peer" checked={fitToPaper} onChange={() => setFitToPaper(!fitToPaper)} /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div></label></div></div>
+                        <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Maximize className="w-3.5 h-3.5 text-blue-600"/> Orientasi & Skala</label><div className="grid grid-cols-2 gap-2"><button onClick={() => setPaperOrientation('portrait')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'portrait' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Smartphone className="w-6 h-6" /><span className="text-[10px] font-black uppercase tracking-widest">Portrait</span></button><button onClick={() => setPaperOrientation('landscape')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'landscape' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Tablet className="w-6 h-6 rotate-90" /><span className="text-[10px] font-black uppercase tracking-widest">Landscape</span></button></div></div>
                       </div>
                       <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-blue-600"/> Tema Visual</label><div className="grid grid-cols-5 gap-2">{ID_CARD_THEMES.map((theme) => (<button key={theme.id} onClick={() => setSelectedPrintTheme(theme)} className={`h-8 rounded-lg border-2 transition-all ${selectedPrintTheme.id === theme.id ? 'border-blue-500 shadow-inner' : 'border-transparent shadow-sm'}`} style={{ backgroundColor: theme.primary }}></button>))}</div></div>
                       <button onClick={handlePrint} className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg transition-all active:scale-[0.98]"><Printer className="w-4 h-4" /> Buka Dialog Printer</button>
