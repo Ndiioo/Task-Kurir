@@ -4,6 +4,7 @@ export enum Role {
   OPERATOR = 'Operator',
   SHIFT_LEAD = 'Shift Lead',
   HUB_LEAD = 'Hub Lead',
+  ADMIN_TRACER = 'Admin Tracer',
   COURIER_DEDICATED = 'Courier Dedicated',
   COURIER_PLUS = 'Courier Plus',
   MITRA = 'Mitra'
@@ -64,7 +65,10 @@ export interface PromotionRequest {
   currentRole: Role | string;
   proposedRole: Role | string;
   requestedBy: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
-  type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Verified_SL';
+  type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | 'AddAccess' | 'RemoveAccess';
+  verificationCode?: string; // Kode untuk SL
+  nextVerificationCode?: string; // Kode untuk HL
   feedback?: string;
+  timestamp: string;
 }
