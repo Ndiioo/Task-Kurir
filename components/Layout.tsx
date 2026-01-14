@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Menu, X, LayoutDashboard, ClipboardList, CalendarCheck, Users, Settings, LogOut, RefreshCw, Camera, User as UserIcon } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ClipboardList, CalendarCheck, Users, Settings, LogOut, RefreshCw, Camera, User as UserIcon, AlertTriangle } from 'lucide-react';
 import RunningFeed from './RunningFeed';
 import { Role, User } from '../types';
 
@@ -18,6 +18,8 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, setActiveMenu, onAvatarChange, hasChangedAvatar, children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoCount = user.photoChangeCount || 0;
+  const isAtLimit = photoCount >= 5;
 
   const isOperatorType = (role: string) => {
     const r = role.toLowerCase();
@@ -29,7 +31,11 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
   };
 
   const handleProfileClick = () => {
-    if (!hasChangedAvatar && fileInputRef.current) {
+    if (isAtLimit) {
+      alert("Limit ganti foto profil telah mencapai batas (5x). Silakan hubungi Shift Lead untuk request reset limit.");
+      return;
+    }
+    if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
@@ -179,14 +185,18 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
               <div className="bg-gray-50 rounded-2xl p-4 group relative">
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
                 
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-2 flex justify-between">
+                <div className="text-[10px] text-gray-400 font-bold uppercase mb-2 flex justify-between">
                   <span>Signed in as</span>
-                  {!hasChangedAvatar && (
+                  {!isAtLimit ? (
                     <button onClick={handleProfileClick} className="text-blue-600 hover:underline flex items-center gap-1">
-                      <Camera className="w-2.5 h-2.5" /> Ubah Foto
+                      <Camera className="w-2.5 h-2.5" /> Ganti ({photoCount}/5)
                     </button>
+                  ) : (
+                    <span className="text-red-500 flex items-center gap-1">
+                        <AlertTriangle className="w-2.5 h-2.5" /> Limit tercapai
+                    </span>
                   )}
-                </p>
+                </div>
 
                 <div className="flex items-center gap-3">
                   <div className="relative">
@@ -199,7 +209,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, onSync, activeMenu, set
                         </div>
                       )}
                     </div>
-                    {!hasChangedAvatar && (
+                    {!isAtLimit && (
                       <button 
                         onClick={handleProfileClick}
                         className="absolute -bottom-1 -right-1 bg-blue-600 text-white p-1 rounded-full shadow-lg border-2 border-white hover:bg-blue-700 transition-all opacity-0 group-hover:opacity-100"
