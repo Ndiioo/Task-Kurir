@@ -17,6 +17,7 @@ export interface User {
   password?: string;
   nik?: string;
   avatarUrl?: string;
+  photoChangeCount?: number;
 }
 
 export interface PackageData {
@@ -64,6 +65,6 @@ export interface PromotionRequest {
   proposedRole: Role | string;
   requestedBy: string;
   status: 'Pending' | 'Approved' | 'Rejected';
-  type: 'Promote' | 'Demote' | 'ChangeAccess';
+  type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit';
   feedback?: string;
 }

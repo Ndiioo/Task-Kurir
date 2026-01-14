@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert } from 'lucide-react';
+import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert, Printer, Settings2, Layers, Eye, Palette, Camera } from 'lucide-react';
 import { Role, User, PackageData, AssignTask, AttendanceRecord, PromotionRequest, TaskItem } from './types';
-import { getAllUsers, getTasks, getAttendance, normalizeId, updateUserInSpreadsheet } from './services/dataService';
+import { getAllUsers, getTasks, getAttendance, normalizeId, updateUserInSpreadsheet, updateTaskStatusInSpreadsheet } from './services/dataService';
 import Layout from './components/Layout';
-import EmployeeCard from './components/EmployeeCard';
+import EmployeeCard, { ID_CARD_THEMES, CardTheme } from './components/EmployeeCard';
 import QRCodeModal from './components/QRCodeModal';
 
 const SESSION_KEY = 'tompobulu_user_session';
@@ -60,7 +60,16 @@ const App: React.FC = () => {
   const [searchEmployeeQuery, setSearchEmployeeQuery] = useState('');
   const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
   const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<Role | string>('');
-  const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | ''>('');
+  const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | ''>('');
+
+  // Print States
+  const [printRoleFilter, setPrintRoleFilter] = useState('All Roles');
+  const [printEmployeeId, setPrintEmployeeId] = useState('All');
+  const [printWidth, setPrintWidth] = useState(86); // mm
+  const [printHeight, setPrintHeight] = useState(54); // mm
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
+  const [isGeneratingPrint, setIsGeneratingPrint] = useState(false);
+  const [selectedPrintTheme, setSelectedPrintTheme] = useState<CardTheme>(ID_CARD_THEMES[0]);
 
   const timeoutRef = useRef<any>(null);
 
@@ -121,7 +130,7 @@ const App: React.FC = () => {
 
       if (currentUser) {
         const updatedSelf = users.find(u => u.id === currentUser.id);
-        if (updatedSelf && (updatedSelf.role !== currentUser.role || updatedSelf.avatarUrl !== currentUser.avatarUrl)) {
+        if (updatedSelf && (updatedSelf.role !== currentUser.role || updatedSelf.avatarUrl !== currentUser.avatarUrl || updatedSelf.photoChangeCount !== currentUser.photoChangeCount)) {
           const newUser = { ...currentUser, ...updatedSelf };
           setCurrentUser(newUser);
           localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
@@ -165,9 +174,18 @@ const App: React.FC = () => {
   };
 
   const handleAvatarChange = (userId: string, file: File) => {
+    const userToUpdate = allUsers.find(u => u.id === userId) || currentUser;
+    const currentCount = userToUpdate?.photoChangeCount || 0;
+
+    if (currentCount >= 5) {
+      alert("Limit ganti foto profil telah mencapai batas (5x). Silakan hubungi Shift Lead untuk request reset limit.");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result as string;
+      const nextCount = currentCount + 1;
       
       setCustomAvatars(prev => ({ ...prev, [userId]: base64 }));
       setChangedAvatarIds(prev => {
@@ -176,16 +194,23 @@ const App: React.FC = () => {
         return next;
       });
 
-      const success = await updateUserInSpreadsheet(userId, { avatarUrl: base64 });
+      const success = await updateUserInSpreadsheet(userId, { 
+        avatarUrl: base64,
+        role: userToUpdate?.role,
+        photoChangeCount: nextCount
+      });
       
       if (currentUser?.id === userId) {
-        const updatedUser = { ...currentUser, avatarUrl: base64 };
+        const updatedUser = { ...currentUser, avatarUrl: base64, photoChangeCount: nextCount };
         setCurrentUser(updatedUser);
         localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
       }
 
+      // Update local users state to reflect increment
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, photoChangeCount: nextCount } : u));
+
       if (success) {
-        console.log("Avatar berhasil disinkronkan ke database.");
+        console.log(`Avatar berhasil disinkronkan. Sisa ganti foto: ${5 - nextCount}`);
       }
     };
     reader.readAsDataURL(file);
@@ -266,47 +291,71 @@ const App: React.FC = () => {
   const courierEmployees = useMemo(() => filteredEmployees.filter(u => checkIsCourier(u.role as string)), [filteredEmployees, checkIsCourier]);
   const staffEmployees = useMemo(() => filteredEmployees.filter(u => !checkIsCourier(u.role as string)), [filteredEmployees, checkIsCourier]);
 
-  const toggleTaskScanned = (taskId: string) => {
+  const toggleTaskScanned = async (taskId: string) => {
+    const isCurrentlyScanned = scannedTaskIds.has(taskId);
     setScannedTaskIds(prev => {
       const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId);
+      if (isCurrentlyScanned) next.delete(taskId);
       else next.add(taskId);
       return next;
     });
+    await updateTaskStatusInSpreadsheet(taskId, isCurrentlyScanned ? 'Unscanned' : 'Scanned');
   };
 
   const handleApproval = async (request: PromotionRequest, isApproved: boolean) => {
     setPromotions(prev => prev.map(p => 
       p.id === request.id ? { ...p, status: isApproved ? 'Approved' : 'Rejected' } : p
     ));
+
     if (isApproved) {
-      const success = await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
-      if (success) {
-        setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, role: request.proposedRole } : u));
-        if (currentUser?.id === request.employeeId) {
-          const updatedUser = { ...currentUser, role: request.proposedRole };
-          setCurrentUser(updatedUser);
-          localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+      if (request.type === 'ResetPhotoLimit') {
+        const success = await updateUserInSpreadsheet(request.employeeId, { photoChangeCount: 0 });
+        if (success) {
+          setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, photoChangeCount: 0 } : u));
+          if (currentUser?.id === request.employeeId) {
+            const updatedUser = { ...currentUser, photoChangeCount: 0 };
+            setCurrentUser(updatedUser);
+            localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+          }
+          alert(`Limit ganti foto profil ${request.employeeName} telah direset.`);
         }
-        alert(`Request berhasil disetujui. Jabatan ${request.employeeName} kini adalah ${request.proposedRole}.`);
       } else {
-        alert("Gagal sinkronisasi ke Spreadsheet. Perubahan hanya dilakukan secara lokal.");
+        const success = await updateUserInSpreadsheet(request.employeeId, { role: request.proposedRole });
+        if (success) {
+          setAllUsers(prev => prev.map(u => u.id === request.employeeId ? { ...u, role: request.proposedRole } : u));
+          if (currentUser?.id === request.employeeId) {
+            const updatedUser = { ...currentUser, role: request.proposedRole };
+            setCurrentUser(updatedUser);
+            localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+          }
+          alert(`Request berhasil disetujui. Jabatan ${request.employeeName} kini adalah ${request.proposedRole}.`);
+        } else {
+          alert("Gagal sinkronisasi ke Spreadsheet. Perubahan hanya dilakukan secara lokal.");
+        }
       }
     }
   };
 
   const handlePromotionSubmission = () => {
-    if (!selectedEmpForAdjustment || !adjustmentTargetRole || !currentUser || !adjustmentType) return;
+    if (!selectedEmpForAdjustment || !currentUser || !adjustmentType) return;
     
+    // For ResetPhotoLimit, target role is the current role as it won't change
+    const targetRole = adjustmentType === 'ResetPhotoLimit' ? selectedEmpForAdjustment.role : adjustmentTargetRole;
+    
+    if (!targetRole && adjustmentType !== 'ResetPhotoLimit') {
+        alert("Harap pilih role target.");
+        return;
+    }
+
     const newRequest: PromotionRequest = {
       id: `adj-${Date.now()}`,
       employeeId: selectedEmpForAdjustment.id,
       employeeName: selectedEmpForAdjustment.name,
       currentRole: selectedEmpForAdjustment.role,
-      proposedRole: adjustmentTargetRole,
+      proposedRole: targetRole,
       requestedBy: currentUser.name,
       status: 'Pending',
-      type: adjustmentType as 'Promote' | 'Demote' | 'ChangeAccess'
+      type: adjustmentType as any
     };
     
     setPromotions(prev => [...prev, newRequest]);
@@ -314,7 +363,7 @@ const App: React.FC = () => {
     setAdjustmentTargetRole('');
     setAdjustmentType('');
     setSearchEmployeeQuery('');
-    alert("Permintaan perubahan data telah dikirim ke Hub Lead untuk persetujuan.");
+    alert("Permintaan telah dikirim ke Hub Lead untuk persetujuan.");
   };
 
   const settingsEmployeeSearchResults = useMemo(() => {
@@ -325,6 +374,30 @@ const App: React.FC = () => {
        u.id !== currentUser?.id && u.role !== Role.HUB_LEAD
     ).slice(0, 5);
   }, [allUsers, searchEmployeeQuery, currentUser]);
+
+  // Print Logic
+  const printUsers = useMemo(() => {
+    let filtered = usersWithAvatars;
+    if (printRoleFilter !== 'All Roles') {
+      filtered = filtered.filter(u => u.role === printRoleFilter);
+    }
+    if (printEmployeeId !== 'All') {
+      filtered = filtered.filter(u => u.id === printEmployeeId);
+    }
+    return filtered;
+  }, [usersWithAvatars, printRoleFilter, printEmployeeId]);
+
+  const handlePrint = () => {
+    if (printUsers.length === 0) {
+      alert("Tidak ada karyawan yang dipilih untuk dicetak.");
+      return;
+    }
+    setIsGeneratingPrint(true);
+    setTimeout(() => {
+      window.print();
+      setIsGeneratingPrint(false);
+    }, 500);
+  };
 
   if (!currentUser) {
     return (
@@ -371,6 +444,32 @@ const App: React.FC = () => {
       onAvatarChange={handleAvatarChange}
       hasChangedAvatar={changedAvatarIds.has(currentUser.id)}
     >
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-area, #printable-area * { visibility: visible; }
+          #printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+          .page-break { page-break-after: always; }
+          @page { size: auto; margin: 10mm; }
+        }
+      `}</style>
+
+      {/* Hidden Printable Area */}
+      <div id="printable-area" className="hidden print:block bg-white">
+        <div className="flex flex-wrap gap-10 justify-center p-8">
+          {printUsers.map((u, idx) => (
+            <div 
+              key={u.id} 
+              className={`flex justify-center mb-10 ${idx % 2 === 1 ? 'page-break' : ''}`}
+              style={{ width: `${printWidth}mm`, height: `${printHeight}mm`, transform: 'scale(1.1)', transformOrigin: 'top center' }}
+            >
+              <EmployeeCard employee={u} isCurrentUser={false} hasChangedAvatar={false} theme={selectedPrintTheme} />
+            </div>
+          ))}
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="h-full flex flex-col items-center justify-center gap-4 py-12">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -380,6 +479,7 @@ const App: React.FC = () => {
         <>
           {activeMenu === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Dashboard Content */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-black text-gray-900 tracking-tight">Operational Dashboard</h2>
@@ -718,8 +818,128 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              {/* ID Card Print Management Section */}
+              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-8 no-print overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-50 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
+                      <Printer className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900 leading-none">Cetak Kartu Karyawan</h3>
+                      <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Sistem Percetakan ID Card Otomatis</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setShowPrintSettings(!showPrintSettings)}
+                      className={`p-3 rounded-xl border transition-all ${showPrintSettings ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 border-gray-100 text-gray-400 hover:text-gray-600'}`}
+                      title="Pengaturan Ukuran"
+                    >
+                      <Settings2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  {/* Form & Settings */}
+                  <div className="lg:col-span-7 space-y-8">
+                    {showPrintSettings && (
+                      <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Lebar (mm)</label>
+                          <input type="number" value={printWidth} onChange={(e) => setPrintWidth(Number(e.target.value))} className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl font-bold text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Tinggi (mm)</label>
+                          <input type="number" value={printHeight} onChange={(e) => setPrintHeight(Number(e.target.value))} className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl font-bold text-sm" />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Filter className="w-3 h-3"/> Filter Jabatan</label>
+                          <select 
+                            value={printRoleFilter}
+                            onChange={(e) => { setPrintRoleFilter(e.target.value); setPrintEmployeeId('All'); }}
+                            className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm text-gray-700 appearance-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><UsersIcon className="w-3 h-3"/> Pilih Karyawan</label>
+                          <select 
+                            value={printEmployeeId}
+                            onChange={(e) => setPrintEmployeeId(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm text-gray-700 appearance-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="All">Semua Karyawan ({printRoleFilter})</option>
+                            {usersWithAvatars
+                              .filter(u => printRoleFilter === 'All Roles' || u.role === printRoleFilter)
+                              .map(u => <option key={u.id} value={u.id}>{u.name}</option>)
+                            }
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3 h-3"/> Pilih Tema Professional (10 Varian)</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                          {ID_CARD_THEMES.map((theme) => (
+                            <button 
+                              key={theme.id}
+                              onClick={() => setSelectedPrintTheme(theme)}
+                              className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${selectedPrintTheme.id === theme.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-transparent bg-gray-50 hover:bg-gray-100'}`}
+                            >
+                              <div className="w-full h-8 rounded-lg shadow-inner" style={{ backgroundColor: theme.primary }}></div>
+                              <span className="text-[8px] font-black uppercase text-center leading-tight">{theme.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                      <button onClick={handlePrint} disabled={isGeneratingPrint} className="flex-1 bg-gray-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 hover:bg-black transition-all shadow-lg active:scale-[0.98]">
+                        {isGeneratingPrint ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                        Cetak {printEmployeeId === 'All' ? 'Batch' : 'Individual'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preview Area */}
+                  <div className="lg:col-span-5 flex flex-col items-center">
+                    <div className="w-full space-y-4">
+                      <div className="flex items-center gap-2 px-1">
+                        <Eye className="w-4 h-4 text-blue-600" />
+                        <h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Preview Real-time</h4>
+                      </div>
+                      <div className="bg-gray-100/50 p-8 rounded-[3rem] border-2 border-dashed border-gray-200 flex items-center justify-center">
+                        <div className="scale-[0.85] origin-center">
+                          {printUsers.length > 0 ? (
+                            <EmployeeCard 
+                              employee={printUsers[0]} 
+                              isCurrentUser={false} 
+                              hasChangedAvatar={false} 
+                              theme={selectedPrintTheme}
+                            />
+                          ) : (
+                            <div className="text-gray-400 font-bold text-xs uppercase text-center">Data tidak ditemukan</div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 text-center italic font-medium mt-2">ID Card di atas adalah tampilan yang akan muncul pada kertas cetak.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Promotions and Adjustment Sections */}
               {(currentUser.role === Role.HUB_LEAD || currentUser.role.toString().toLowerCase().includes('hub lead')) && (
-                <section className="space-y-6">
+                <section className="space-y-6 no-print">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
                       <CheckCircle2 className="w-6 h-6 text-indigo-600" />
@@ -742,8 +962,8 @@ const App: React.FC = () => {
                           <div className="flex justify-between items-start mb-4">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase text-white ${p.type === 'Promote' ? 'bg-green-500' : p.type === 'Demote' ? 'bg-red-500' : 'bg-blue-500'}`}>
-                                  {p.type === 'Promote' ? 'Promosi' : p.type === 'Demote' ? 'Demosi' : 'Akses'}
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase text-white ${p.type === 'Promote' ? 'bg-green-500' : p.type === 'Demote' ? 'bg-red-500' : p.type === 'ResetPhotoLimit' ? 'bg-orange-500' : 'bg-blue-500'}`}>
+                                  {p.type === 'Promote' ? 'Promosi' : p.type === 'Demote' ? 'Demosi' : p.type === 'ResetPhotoLimit' ? 'Reset Foto' : 'Akses'}
                                 </span>
                                 <p className="text-sm font-black text-gray-900 leading-tight">{p.employeeName}</p>
                               </div>
@@ -752,15 +972,24 @@ const App: React.FC = () => {
                             <span className="bg-orange-50 text-orange-600 text-[8px] font-black uppercase px-2 py-1 rounded-lg">Menunggu</span>
                           </div>
                           <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-2xl mb-6">
-                            <div className="flex-1 text-center truncate">
-                              <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Dari</p>
-                              <p className="text-[10px] font-black text-gray-700 bg-white px-2 py-1 rounded-lg border border-gray-100">{p.currentRole}</p>
-                            </div>
-                            <ArrowRightLeft className="w-4 h-4 text-gray-300 shrink-0" />
-                            <div className="flex-1 text-center truncate">
-                              <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Ke</p>
-                              <p className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{p.proposedRole}</p>
-                            </div>
+                            {p.type === 'ResetPhotoLimit' ? (
+                                <div className="flex-1 text-center">
+                                    <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Tindakan</p>
+                                    <p className="text-[10px] font-black text-orange-700 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100 italic">RESET LIMIT GANTI FOTO PROFIL</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex-1 text-center truncate">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Dari</p>
+                                        <p className="text-[10px] font-black text-gray-700 bg-white px-2 py-1 rounded-lg border border-gray-100">{p.currentRole}</p>
+                                    </div>
+                                    <ArrowRightLeft className="w-4 h-4 text-gray-300 shrink-0" />
+                                    <div className="flex-1 text-center truncate">
+                                        <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Ke</p>
+                                        <p className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">{p.proposedRole}</p>
+                                    </div>
+                                </>
+                            )}
                           </div>
                           <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                             <p className="text-[9px] font-black text-gray-400">Oleh: {p.requestedBy}</p>
@@ -777,7 +1006,7 @@ const App: React.FC = () => {
               )}
 
               {(currentUser.role === Role.SHIFT_LEAD || currentUser.role.toString().toLowerCase().includes('shift lead')) && (
-                <section className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 no-print">
                   <div className="lg:col-span-5 space-y-6">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
@@ -833,7 +1062,7 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest">Informasi Penting</span>
                       </div>
                       <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
-                        Setiap permintaan perubahan data (Promosi, Demosi, atau Perubahan Akses) memerlukan persetujuan Hub Lead sebelum diaplikasikan ke sistem.
+                        Setiap permintaan perubahan data (Promosi, Demosi, Perubahan Akses, atau Reset Limit Foto) memerlukan persetujuan Hub Lead.
                       </p>
                     </div>
                   </div>
@@ -852,12 +1081,12 @@ const App: React.FC = () => {
                         <div className="flex-1 space-y-8">
                           <div>
                             <h3 className="text-lg font-black text-gray-900 leading-tight">Konfigurasi Perubahan</h3>
-                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pilih Tindakan & Role Baru</p>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pilih Tindakan</p>
                           </div>
 
                           <div className="space-y-3">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Tipe Perubahan</label>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Tipe Tindakan</label>
+                            <div className="grid grid-cols-2 gap-2">
                               <button 
                                 onClick={() => setAdjustmentType('Promote')}
                                 className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'Promote' ? 'bg-green-50 border-green-500 text-green-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
@@ -866,23 +1095,16 @@ const App: React.FC = () => {
                                 Promosi
                               </button>
                               <button 
-                                onClick={() => setAdjustmentType('Demote')}
-                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'Demote' ? 'bg-red-50 border-red-500 text-red-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
+                                onClick={() => setAdjustmentType('ResetPhotoLimit')}
+                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'ResetPhotoLimit' ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
                               >
-                                <UserMinus className="w-5 h-5" />
-                                Demosi
-                              </button>
-                              <button 
-                                onClick={() => setAdjustmentType('ChangeAccess')}
-                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[10px] font-black uppercase ${adjustmentType === 'ChangeAccess' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-md' : 'bg-gray-50 border-transparent text-gray-500 hover:bg-white hover:border-gray-200'}`}
-                              >
-                                <ShieldAlert className="w-5 h-5" />
-                                Akses
+                                <Camera className="w-5 h-5" />
+                                Reset Foto ({selectedEmpForAdjustment.photoChangeCount || 0}/5)
                               </button>
                             </div>
                           </div>
 
-                          {adjustmentType && (
+                          {adjustmentType && adjustmentType !== 'ResetPhotoLimit' && (
                             <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Target Role</label>
                               <div className="relative">
@@ -903,7 +1125,7 @@ const App: React.FC = () => {
 
                           <div className="pt-4 border-t border-gray-50 flex gap-3">
                             <button onClick={() => setSelectedEmpForAdjustment(null)} className="flex-1 py-4 bg-gray-50 text-gray-500 text-xs font-black uppercase rounded-2xl hover:bg-gray-100 transition-all active:scale-95">Batal</button>
-                            <button onClick={handlePromotionSubmission} disabled={!adjustmentTargetRole} className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg ${!adjustmentTargetRole ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700'}`}>Kirim Request</button>
+                            <button onClick={handlePromotionSubmission} className={`flex-2 py-4 px-8 text-xs font-black uppercase rounded-2xl transition-all active:scale-95 shadow-lg bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700`}>Kirim Request</button>
                           </div>
                         </div>
                       </div>
@@ -911,7 +1133,7 @@ const App: React.FC = () => {
                       <div className="h-full min-h-[400px] bg-white rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center p-12 text-center group">
                         <div className="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500"><UsersIcon className="w-12 h-12 text-gray-200" /></div>
                         <h4 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Pilih Karyawan Untuk Mengajukan Perubahan</h4>
-                        <p className="text-xs text-gray-300 max-w-xs leading-relaxed">Cari karyawan pada kolom pencarian di sebelah kiri untuk mulai melakukan konfigurasi jabatan atau akses.</p>
+                        <p className="text-xs text-gray-300 max-w-xs leading-relaxed">Cari karyawan pada kolom pencarian di sebelah kiri untuk mulai melakukan konfigurasi jabatan atau reset limit foto.</p>
                       </div>
                     )}
                   </div>
