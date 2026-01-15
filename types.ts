@@ -19,6 +19,7 @@ export interface User {
   nik?: string;
   avatarUrl?: string;
   photoChangeCount?: number;
+  deviceId?: string; // Menyimpan ID perangkat aktif terakhir
 }
 
 export interface PackageData {
@@ -67,8 +68,8 @@ export interface PromotionRequest {
   requestedBy: string;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Verified_SL';
   type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | 'AddAccess' | 'RemoveAccess';
-  verificationCode?: string; // Kode untuk SL
-  nextVerificationCode?: string; // Kode untuk HL
+  verificationCode?: string;
+  nextVerificationCode?: string;
   feedback?: string;
   timestamp: string;
 }

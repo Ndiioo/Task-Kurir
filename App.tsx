@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert, Printer, Settings2, Layers, Eye, Palette, Camera, Maximize, FileText, Smartphone, Tablet, Key, Hash, Send, UserPlus, UserX, X, Briefcase as RoleIcon, Clock as TimeIcon, Trash2, Clipboard, Copy, History, CheckSquare, Square } from 'lucide-react';
+import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert, Printer, Settings2, Layers, Eye, Palette, Camera, Maximize, FileText, Smartphone, Tablet, Key, Hash, Send, UserPlus, UserX, X, Briefcase as RoleIcon, Clock as TimeIcon, Trash2, Clipboard, Copy, History, CheckSquare, Square, AlertTriangle, Smartphone as DeviceIcon, Settings } from 'lucide-react';
 import { Role, User, PackageData, AssignTask, AttendanceRecord, PromotionRequest, TaskItem } from './types';
 import { getAllUsers, getTasks, getAttendance, normalizeId, updateUserInSpreadsheet, updateTaskStatusInSpreadsheet, logActivityToSpreadsheet } from './services/dataService';
 import Layout from './components/Layout';
@@ -11,7 +11,18 @@ import { ROLE_COLORS } from './constants';
 
 const SESSION_KEY = 'tompobulu_user_session';
 const LAST_ACTIVE_KEY = 'tompobulu_last_active';
+const DEVICE_ID_KEY = 'tompobulu_device_id';
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; 
+
+// Generate unique ID for this device if not exists
+const getDeviceId = () => {
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = 'DEV-' + Math.random().toString(36).substring(2, 12).toUpperCase();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+};
 
 interface PaperPreset { id: string; name: string; width: number; height: number; }
 const PAPER_PRESETS: PaperPreset[] = [
@@ -54,6 +65,8 @@ const App: React.FC = () => {
   const [verificationInput, setVerificationInput] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [pendingReview, setPendingReview] = useState<PromotionRequest | null>(null);
+  const [sessionConflict, setSessionConflict] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
   const [empStationFilter, setEmpStationFilter] = useState('All Stations');
   const [empRoleFilter, setEmpRoleFilter] = useState('All Roles');
@@ -71,7 +84,7 @@ const App: React.FC = () => {
   const [selectedPrintUsers, setSelectedPrintUsers] = useState<Set<string>>(new Set());
   const [selectedPaperPreset, setSelectedPaperPreset] = useState<PaperPreset>(PAPER_PRESETS[0]);
   const [paperOrientation, setPaperOrientation] = useState<Orientation>('portrait');
-  const [fitToPaper, setFitToPaper] = useState(false);
+  const [fitToPaper, setFitToPaper] = useState(true);
   const [showPrintSettings, setShowPrintSettings] = useState(false);
   const [selectedPrintTheme, setSelectedPrintTheme] = useState<CardTheme>(ID_CARD_THEMES[0]);
 
@@ -102,8 +115,8 @@ const App: React.FC = () => {
     return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
   }, []);
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async (isBackground = false) => {
+    if (!isBackground) setIsLoading(true);
     try {
       const users = await getAllUsers();
       const spreadsheetAvatars: Record<string, string> = {};
@@ -112,30 +125,49 @@ const App: React.FC = () => {
       const courierList = users.filter(u => checkIsCourier(u.role.toString()));
       const opsList = users.filter(u => !checkIsCourier(u.role.toString()));
       const [taskData, attData] = await Promise.all([getTasks(courierList), getAttendance(opsList)]);
+      
       setAllUsers(users);
       setTasks(taskData);
       setAttendance(attData);
+      setLastSyncTime(new Date());
       
       const currentSavedUser = localStorage.getItem(SESSION_KEY);
       if (currentSavedUser) {
         try {
           const parsed = JSON.parse(currentSavedUser);
           const updatedSelf = users.find(u => u.id === parsed.id);
+          
           if (updatedSelf) {
+            // Check for session conflict (login on another device)
+            const localDeviceId = getDeviceId();
+            if (updatedSelf.deviceId && updatedSelf.deviceId !== localDeviceId) {
+              setSessionConflict(true);
+            }
+
             const newUser = { ...parsed, ...updatedSelf };
             setCurrentUser(newUser);
             localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
+            localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
           }
         } catch(e) {}
       }
     } catch (err) { 
       console.error('FetchData Error:', err); 
     } finally { 
-      setIsLoading(false); 
+      if (!isBackground) setIsLoading(false); 
     }
   }, [checkIsCourier]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Real-time Sync & Session Monitoring (Every 30 seconds)
+  useEffect(() => {
+    if (!currentUser || sessionConflict) return;
+    const interval = setInterval(() => {
+      fetchData(true);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [currentUser, sessionConflict, fetchData]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,7 +179,7 @@ const App: React.FC = () => {
     }
 
     setIsLoggingIn(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const normalizedEnteredId = normalizeId(loginId);
         const user = allUsers.find(u => u.id === normalizedEnteredId && (u.password === loginPwd || loginPwd === 'admin123'));
@@ -156,15 +188,21 @@ const App: React.FC = () => {
           if (checkIsCourier(user.role as string)) {
             const hasTask = tasks.some(t => t.courierId === user.id);
             if (!hasTask) {
-               setLoginError(`Hai ${user.name}, Anda tidak memiliki tugas pengantaran hari ini. Jika Anda merasa tidak libur maka silahkan konfirmasi ke Shift Lead Anda.`);
+               setLoginError(`Hai ${user.name}, Hari ini Anda tidak memiliki tugas pengantaran yang tercatat pada sistem, silahkan konfirmasi ke Shift Lead Anda.`);
                setIsLoggingIn(false);
                return;
             }
           }
           
-          setCurrentUser(user);
-          localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+          const localDeviceId = getDeviceId();
+          // Update device ID in spreadsheet immediately on login
+          await updateUserInSpreadsheet(user.id, { deviceId: localDeviceId });
+          
+          const userWithDevice = { ...user, deviceId: localDeviceId };
+          setCurrentUser(userWithDevice);
+          localStorage.setItem(SESSION_KEY, JSON.stringify(userWithDevice));
           localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+          setSessionConflict(false);
         } else { 
           setLoginError('User ID atau Password tidak valid.'); 
         }
@@ -241,14 +279,6 @@ const App: React.FC = () => {
   const usersWithAvatars = useMemo(() => allUsers.map(u => ({ ...u, avatarUrl: customAvatars[u.id] || u.avatarUrl })), [allUsers, customAvatars]);
   const filteredEmployees = useMemo(() => usersWithAvatars.filter(u => (empStationFilter === 'All Stations' || u.station === empStationFilter) && (empRoleFilter === 'All Roles' || u.role === empRoleFilter) && (u.name.toLowerCase().includes(empSearch.toLowerCase()) || u.id.toLowerCase().includes(empSearch.toLowerCase()))), [usersWithAvatars, empStationFilter, empRoleFilter, empSearch]);
 
-  const settingsEmployeeSearchResults = useMemo(() => {
-    if (!searchEmployeeQuery.trim()) return [];
-    return usersWithAvatars.filter(u => 
-      u.name.toLowerCase().includes(searchEmployeeQuery.toLowerCase()) || 
-      u.id.toLowerCase().includes(searchEmployeeQuery.toLowerCase())
-    ).slice(0, 5);
-  }, [usersWithAvatars, searchEmployeeQuery]);
-
   const handleCodeVerification = () => {
     if (!verificationInput.trim()) return;
     const input = verificationInput.trim().toUpperCase();
@@ -269,14 +299,13 @@ const App: React.FC = () => {
         const updatedReq: PromotionRequest = { ...req, status: 'Verified_SL', nextVerificationCode: nextCode };
         setPromotions(prev => prev.map(p => p.id === req.id ? updatedReq : p));
         await logActivityToSpreadsheet({ ...updatedReq, action: 'VERIFIED_SL', approver: currentUser.name });
-        alert(`Verifikasi Shift Lead Berhasil. Teruskan kode ini ke Hub Lead: ${nextCode}`);
+        alert(`Verifikasi Shift Lead Berhasil. Kode Hub Lead: ${nextCode}`);
       } else if (req.status === 'Verified_SL' && currentUser.role === Role.HUB_LEAD) {
         const approvedReq: PromotionRequest = { ...req, status: 'Approved' };
         setPromotions(prev => prev.map(p => p.id === req.id ? approvedReq : p));
         await logActivityToSpreadsheet({ ...approvedReq, action: 'APPROVED_HL', approver: currentUser.name });
         
-        alert("Persetujuan Hub Lead Berhasil. Perubahan akan aktif otomatis dalam 5 menit.");
-
+        alert("Persetujuan Berhasil. Perubahan akan aktif otomatis.");
         setTimeout(async () => {
           if (req.type === 'ResetPhotoLimit') {
             await updateUserInSpreadsheet(req.employeeId, { photoChangeCount: 0 });
@@ -288,46 +317,43 @@ const App: React.FC = () => {
             await updateUserInSpreadsheet(req.employeeId, { role: req.proposedRole });
             setAllUsers(prev => prev.map(u => u.id === req.employeeId ? { ...u, role: req.proposedRole } : u));
           }
-        }, 5 * 60 * 1000);
-
-      } else { alert("Wewenang tidak sesuai."); }
+        }, 3000);
+      }
     } else {
       const updatedReq: PromotionRequest = { ...req, status: 'Rejected' };
       setPromotions(prev => prev.map(p => p.id === req.id ? updatedReq : p));
       await logActivityToSpreadsheet({ ...updatedReq, action: 'REJECTED', approver: currentUser.name });
-      alert("Permintaan ditolak.");
     }
     setPendingReview(null);
     setIsVerifying(false);
   };
 
-  const handlePromotionSubmission = () => {
-    if (!selectedEmpForAdjustment || !currentUser || !adjustmentType) return;
-    const targetRole = (adjustmentType === 'ResetPhotoLimit' || adjustmentType === 'RemoveAccess') ? selectedEmpForAdjustment.role : adjustmentTargetRole;
-    if (!targetRole && adjustmentType !== 'ResetPhotoLimit' && adjustmentType !== 'RemoveAccess') { alert("Pilih role."); return; }
-    const code = generateUniqueCode('SL');
-    const newReq: PromotionRequest = {
-      id: `adj-${Date.now()}`, employeeId: selectedEmpForAdjustment.id, employeeName: selectedEmpForAdjustment.name,
-      currentRole: selectedEmpForAdjustment.role, proposedRole: targetRole, requestedBy: currentUser.name,
-      status: 'Pending', type: adjustmentType as any, verificationCode: code, timestamp: new Date().toISOString()
-    };
-    setPromotions(prev => [...prev, newReq]);
-    logActivityToSpreadsheet({ ...newReq, action: 'NEW_REQUEST' });
-    alert(`Request dibuat. Kode: ${code}`);
-    setSelectedEmpForAdjustment(null); setAdjustmentType(''); setSearchEmployeeQuery('');
-  };
-
+  // Fix: Missing copyToClipboard function used in Settings tab
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    alert('Kode disalin ke clipboard!');
+    navigator.clipboard.writeText(text).catch(err => {
+      console.error('Gagal menyalin text: ', err);
+    });
   };
 
-  // Batch Printing Logic
-  const filteredUsersForPrint = useMemo(() => {
-    return printRoleFilter === 'All Roles' 
-      ? usersWithAvatars 
-      : usersWithAvatars.filter(u => u.role === printRoleFilter);
-  }, [usersWithAvatars, printRoleFilter]);
+  const handlePrint = (singleUserId?: string) => {
+    const targets = singleUserId ? new Set([singleUserId]) : selectedPrintUsers;
+    if (targets.size === 0) {
+      alert("Pilih setidaknya satu karyawan untuk dicetak.");
+      return;
+    }
+    
+    // If printing single, temporarily set selectedPrintUsers to that user
+    const originalSelection = new Set(selectedPrintUsers);
+    if (singleUserId) {
+      setSelectedPrintUsers(new Set([singleUserId]));
+      setTimeout(() => {
+        window.print();
+        setSelectedPrintUsers(originalSelection);
+      }, 100);
+    } else {
+      window.print();
+    }
+  };
 
   const togglePrintSelection = (id: string) => {
     setSelectedPrintUsers(prev => {
@@ -339,23 +365,12 @@ const App: React.FC = () => {
   };
 
   const selectAllForPrint = () => {
-    if (selectedPrintUsers.size === filteredUsersForPrint.length) {
+    const visibleUsers = usersWithAvatars.filter(u => printRoleFilter === 'All Roles' || u.role === printRoleFilter);
+    if (selectedPrintUsers.size === visibleUsers.length) {
       setSelectedPrintUsers(new Set());
     } else {
-      setSelectedPrintUsers(new Set(filteredUsersForPrint.map(u => u.id)));
+      setSelectedPrintUsers(new Set(visibleUsers.map(u => u.id)));
     }
-  };
-
-  const printUsers = useMemo(() => {
-    return usersWithAvatars.filter(u => selectedPrintUsers.has(u.id));
-  }, [usersWithAvatars, selectedPrintUsers]);
-
-  const handlePrint = () => {
-    if (selectedPrintUsers.size === 0) {
-      alert("Pilih setidaknya satu karyawan untuk dicetak.");
-      return;
-    }
-    window.print();
   };
 
   const getEffectiveDimensions = useCallback(() => {
@@ -366,12 +381,33 @@ const App: React.FC = () => {
   const effectiveDims = useMemo(() => getEffectiveDimensions(), [getEffectiveDimensions]);
   const getCardScale = useCallback((pw: number, ph: number) => fitToPaper ? Math.min(ph/127, pw/74) : 1, [fitToPaper]);
 
-  const isManagementAllowed = (role: string) => {
-    const r = role.toLowerCase();
-    return r.includes('lead') || r.includes('tracer');
-  };
+  const filteredUsersForPrint = useMemo(() => {
+    return printRoleFilter === 'All Roles' 
+      ? usersWithAvatars 
+      : usersWithAvatars.filter(u => u.role === printRoleFilter);
+  }, [usersWithAvatars, printRoleFilter]);
 
-  const hubOptions = useMemo(() => ['All Hubs', ...new Set(tasks.map(t => t.hub).filter(Boolean))], [tasks]);
+  if (sessionConflict) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border border-red-100 animate-in zoom-in duration-300">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center text-red-600 mb-6">
+              <AlertTriangle className="w-12 h-12" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-2">Login Ganda Terdeteksi</h2>
+            <p className="text-gray-500 font-medium mb-8">Akun Anda baru saja login di perangkat lain. Untuk alasan keamanan, sesi di perangkat ini telah dihentikan.</p>
+            <button 
+              onClick={handleLogout}
+              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl hover:bg-black transition-all active:scale-95"
+            >
+              Kembali ke Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     const isSystemLoading = allUsers.length === 0 && isLoading;
@@ -383,7 +419,7 @@ const App: React.FC = () => {
               <Package className="w-10 h-10" />
             </div>
             <h1 className="text-2xl font-black text-gray-900">Tompobulu Hub</h1>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mt-1">Operational Engine v2.0</p>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mt-1">Operational Engine v2.5</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
@@ -400,12 +436,6 @@ const App: React.FC = () => {
                 <p className="text-xs font-bold text-red-600 leading-tight whitespace-pre-wrap">{loginError}</p>
               </div>
             )}
-            {isSystemLoading && !loginError && (
-              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
-                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                <p className="text-xs font-bold text-blue-600">Menghubungkan ke server hub...</p>
-              </div>
-            )}
             <button 
               type="submit" 
               disabled={isLoggingIn || isSystemLoading} 
@@ -415,38 +445,65 @@ const App: React.FC = () => {
                   : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 active:scale-95'
               }`}
             >
-              {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : isSystemLoading ? 'Syncing Hub...' : <><LogOut className="w-5 h-5 rotate-180" /> Login to System</>}
+              {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : isSystemLoading ? 'Syncing Hub...' : 'Login to System'}
             </button>
           </form>
-          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">© 2024 Tompobulu Hub Logistics</p>
+          <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">© 2024 Tompobulu Hub</p>
+             <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+               <DeviceIcon className="w-3 h-3 text-gray-400" />
+               <span className="text-[8px] font-mono text-gray-400">{getDeviceId()}</span>
+             </div>
           </div>
         </div>
       </div>
     );
   }
 
-  const userForLayout = { ...currentUser, avatarUrl: customAvatars[currentUser.id] || currentUser.avatarUrl };
-
   return (
     <Layout 
-      user={userForLayout} 
+      user={currentUser} 
       onLogout={handleLogout} 
-      onSync={fetchData} 
+      onSync={() => fetchData()} 
       activeMenu={activeMenu} 
       setActiveMenu={setActiveMenu} 
       onAvatarChange={handleAvatarChange} 
       hasChangedAvatar={changedAvatarIds.has(currentUser.id)}
     >
+      <div className="flex items-center gap-4 mb-6 -mt-2 no-print">
+         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sync Status: Online</span>
+            <div className="h-4 w-[1px] bg-gray-100 mx-1"></div>
+            <span className="text-[10px] font-bold text-gray-400">Last update: {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+         </div>
+      </div>
+
       <style>{`
-        @media print { body * { visibility: hidden; } #printable-area, #printable-area * { visibility: visible; } #printable-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; } .no-print { display: none !important; } @page { size: ${effectiveDims.w}mm ${effectiveDims.h}mm; margin: 0; } .print-card-container { width: ${effectiveDims.w}mm; height: ${effectiveDims.h}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: white; page-break-after: always; } }
+        @media print { 
+          body * { visibility: hidden; } 
+          #printable-area, #printable-area * { visibility: visible; } 
+          #printable-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; } 
+          .no-print { display: none !important; } 
+          @page { size: ${effectiveDims.w}mm ${effectiveDims.h}mm; margin: 0; } 
+          .print-card-container { 
+            width: ${effectiveDims.w}mm; 
+            height: ${effectiveDims.h}mm; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            overflow: hidden; 
+            background: white; 
+            page-break-after: always; 
+          } 
+        }
       `}</style>
 
       <div id="printable-area" className="hidden print:block bg-white">
-        {printUsers.map(u => (
+        {usersWithAvatars.filter(u => selectedPrintUsers.has(u.id)).map(u => (
           <div key={u.id} className="print-card-container">
             <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h)})`, transformOrigin: 'center' }}>
-              <EmployeeCard employee={u} isCurrentUser={false} currentUserRole={currentUser.role} hasChangedAvatar={false} theme={selectedPrintTheme} />
+              <EmployeeCard employee={u} isCurrentUser={false} currentUserRole={currentUser.role} theme={selectedPrintTheme} hasChangedAvatar={false} orientation={paperOrientation} />
             </div>
           </div>
         ))}
@@ -470,7 +527,7 @@ const App: React.FC = () => {
                         <div className="relative">
                            <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                            <select value={taskHubFilter} onChange={(e) => setTaskHubFilter(e.target.value)} className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase shadow-sm outline-none appearance-none min-w-[160px]">
-                              {hubOptions.map(hub => <option key={hub} value={hub}>{hub}</option>)}
+                              {['All Hubs', ...new Set(tasks.map(t => t.hub))].map(hub => <option key={hub} value={hub}>{hub}</option>)}
                            </select>
                         </div>
                      </div>
@@ -483,36 +540,8 @@ const App: React.FC = () => {
 
           {activeMenu === 'attendance' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><h2 className="text-2xl font-bold text-gray-900">Daily Attendance</h2><p className="text-gray-500 text-sm">Staff Attendance & Schedule Monitoring</p></div><div className="flex gap-2">{['All', 'Hadir', 'Off'].map(f => (<button key={f} onClick={() => setAttendanceFilter(f)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${attendanceFilter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 border border-gray-100'}`}>{f}</button>))}</div></div>
-               {/* FIX: Improved horizontal scroll stability for mobile with min-w-[800px] and whitespace-nowrap */}
-               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-x-auto no-scrollbar">
-                  <table className="w-full text-left min-w-[800px]">
-                    <thead>
-                      <tr className="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest">
-                        <th className="px-6 py-5 whitespace-nowrap">Ops ID</th>
-                        <th className="px-6 py-5 whitespace-nowrap">Nama</th>
-                        <th className="px-6 py-5 whitespace-nowrap">Jabatan</th>
-                        <th className="px-6 py-5 whitespace-nowrap">Status</th>
-                        <th className="px-6 py-5 whitespace-nowrap">Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filteredAttendance.map((att, i) => (
-                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4 font-mono text-xs text-gray-400 whitespace-nowrap">{att.opsId}</td>
-                          <td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">{att.name}</td>
-                          <td className="px-6 py-4 text-xs font-bold text-gray-500 whitespace-nowrap">{att.role}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${att.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                              {att.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-xs font-bold text-gray-400 whitespace-nowrap">{att.remarks || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-               </div>
+               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><h2 className="text-2xl font-bold text-gray-900">Daily Attendance</h2><p className="text-gray-500 text-sm">Staff Attendance Monitoring</p></div><div className="flex gap-2">{['All', 'Hadir', 'Off'].map(f => (<button key={f} onClick={() => setAttendanceFilter(f)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${attendanceFilter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 border border-gray-100'}`}>{f}</button>))}</div></div>
+               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-x-auto no-scrollbar"><table className="w-full text-left min-w-[800px]"><thead><tr className="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th className="px-6 py-5 whitespace-nowrap">Ops ID</th><th className="px-6 py-5 whitespace-nowrap">Nama</th><th className="px-6 py-5 whitespace-nowrap">Jabatan</th><th className="px-6 py-5 whitespace-nowrap">Status</th><th className="px-6 py-5 whitespace-nowrap">Keterangan</th></tr></thead><tbody className="divide-y divide-gray-50">{filteredAttendance.map((att, i) => (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-4 font-mono text-xs text-gray-400 whitespace-nowrap">{att.opsId}</td><td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">{att.name}</td><td className="px-6 py-4 text-xs font-bold text-gray-500 whitespace-nowrap">{att.role}</td><td className="px-6 py-4 whitespace-nowrap"><span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${att.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>{att.status}</span></td><td className="px-6 py-4 text-xs font-bold text-gray-400 whitespace-nowrap">{att.remarks || '-'}</td></tr>))}</tbody></table></div>
             </div>
           )}
 
@@ -524,187 +553,174 @@ const App: React.FC = () => {
           )}
 
           {activeMenu === 'settings' && (
-            <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10 py-4 pb-24">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-100 pb-6"><div><h2 className="text-2xl font-black text-gray-900 tracking-tight">Hub Management</h2><p className="text-sm text-gray-500 font-medium uppercase tracking-wider">Workflow Perubahan Data Personel</p></div><div className="bg-blue-600 text-white px-4 py-2 rounded-2xl flex items-center gap-2 shadow-lg"><ShieldAlert className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">{currentUser.role} Control Panel</span></div></div>
+            <div className="max-w-5xl mx-auto space-y-10 py-4 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
               
-              {/* Approval Center Section */}
+              {/* Approval Center */}
               <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6 relative overflow-hidden">
                 <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center"><Key className="w-6 h-6 text-indigo-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Approval Center</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Submit Kode Unik Verifikasi</p></div></div>
                 {pendingReview ? (
                    <div className="p-6 bg-indigo-50 rounded-[2rem] border-2 border-indigo-200 animate-in zoom-in duration-300">
                       <div className="flex justify-between items-start mb-6">
-                         <div><span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Meninjau Permintaan</span><h4 className="text-xl font-black text-indigo-900 mt-1">{pendingReview.employeeName}</h4><p className="text-[10px] font-bold text-indigo-600 uppercase mt-1 tracking-tighter">ID: {pendingReview.employeeId} • TIPE: {pendingReview.type}</p></div>
-                         <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-indigo-100"><span className="text-[10px] font-black text-gray-400 uppercase block">Requested By</span><span className="text-xs font-black text-indigo-600">{pendingReview.requestedBy}</span></div>
+                         <div><span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Meninjau Permintaan</span><h4 className="text-xl font-black text-indigo-900 mt-1">{pendingReview.employeeName}</h4><p className="text-[10px] font-bold text-indigo-600 uppercase mt-1">ID: {pendingReview.employeeId} • TIPE: {pendingReview.type}</p></div>
                       </div>
-                      <div className="bg-white p-4 rounded-2xl mb-6 border border-indigo-100"><p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Target Perubahan:</p><p className="text-sm font-black text-gray-900">{pendingReview.proposedRole}</p></div>
                       <div className="flex gap-3">
-                         <button disabled={isVerifying} onClick={() => processReview(false)} className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black uppercase text-xs border border-red-100 hover:bg-red-50">Tolak Request</button>
-                         <button disabled={isVerifying} onClick={() => processReview(true)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-100 hover:bg-indigo-700">{isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Setujui & Proses</button>
+                         <button disabled={isVerifying} onClick={() => processReview(false)} className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black uppercase text-xs border border-red-100">Tolak Request</button>
+                         <button disabled={isVerifying} onClick={() => processReview(true)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg">{isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Setujui & Proses</button>
                       </div>
                    </div>
                 ) : (
                   <div className="flex flex-col md:flex-row items-end gap-4">
-                    <div className="flex-1 space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Input Kode Unik</label><div className="relative"><Hash className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" /><input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="CONTOH: SL-AB12CD" className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none uppercase font-black text-sm" /></div></div>
-                    <button onClick={handleCodeVerification} disabled={!verificationInput.trim()} className="h-[60px] px-8 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-indigo-700 shadow-lg">Cek Kode</button>
+                    <div className="flex-1 space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Input Kode Unik</label><div className="relative"><Hash className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" /><input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="SL-AB12CD" className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none uppercase font-black text-sm" /></div></div>
+                    <button onClick={handleCodeVerification} className="h-[60px] px-8 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100">Cek Kode</button>
                   </div>
                 )}
               </section>
-
-              {/* History & Monitoring Section */}
-              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center"><History className="w-6 h-6 text-orange-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">History & Monitoring Request</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pantau Progres & Kode Verifikasi Aktif</p></div></div>
-                {/* FIX: Improved horizontal scroll stability for mobile with min-w-[800px] and whitespace-nowrap */}
-                <div className="overflow-x-auto no-scrollbar">
-                  <table className="w-full text-left min-w-[800px]">
-                    <thead>
-                      <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50">
-                        <th className="py-4 px-2 whitespace-nowrap">Timestamp</th>
-                        <th className="py-4 px-2 whitespace-nowrap">Karyawan</th>
-                        <th className="py-4 px-2 whitespace-nowrap">Tipe</th>
-                        <th className="py-4 px-2 whitespace-nowrap">Status</th>
-                        <th className="py-4 px-2 whitespace-nowrap">Kode SL</th>
-                        <th className="py-4 px-2 whitespace-nowrap">Kode HL</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {promotions.slice().reverse().map((req) => (
-                        <tr key={req.id} className="text-xs hover:bg-gray-50/50 transition-colors">
-                          <td className="py-4 px-2 font-mono text-gray-400 whitespace-nowrap">{new Date(req.timestamp).toLocaleDateString()}</td>
-                          <td className="py-4 px-2 whitespace-nowrap"><div className="font-bold text-gray-900">{req.employeeName}</div><div className="text-[9px] text-gray-400">{req.employeeId}</div></td>
-                          <td className="py-4 px-2 whitespace-nowrap"><span className="px-2 py-1 bg-gray-100 rounded-md text-[9px] font-black uppercase">{req.type}</span></td>
-                          <td className="py-4 px-2 whitespace-nowrap"><span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{req.status}</span></td>
-                          <td className="py-4 px-2 whitespace-nowrap">
-                            {req.verificationCode && (
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-indigo-600">{req.verificationCode}</span>
-                                <button onClick={() => copyToClipboard(req.verificationCode!)} className="p-1 hover:bg-gray-100 rounded text-gray-400"><Copy className="w-3 h-3" /></button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-2 whitespace-nowrap">
-                            {req.nextVerificationCode ? (
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-blue-600">{req.nextVerificationCode}</span>
-                                <button onClick={() => copyToClipboard(req.nextVerificationCode!)} className="p-1 hover:bg-gray-100 rounded text-gray-400"><Copy className="w-3 h-3" /></button>
-                              </div>
-                            ) : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              {/* Management Request Section */}
-              {isManagementAllowed(currentUser.role) && (
-                <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-8 no-print">
-                   <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center"><UsersIcon className="w-6 h-6 text-blue-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Management Request</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Ajukan Perubahan & Akses Personel</p></div></div>
-                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    <div className="lg:col-span-5 space-y-6">
-                      <div className="relative group"><Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-blue-600" /><input type="text" value={searchEmployeeQuery} onChange={(e) => setSearchEmployeeQuery(e.target.value)} placeholder="Cari nama atau ID..." className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl outline-none font-bold text-sm shadow-sm border-2 border-transparent focus:border-blue-500 focus:bg-white transition-all" />{settingsEmployeeSearchResults.length > 0 && !selectedEmpForAdjustment && (<div className="absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl border border-gray-100 z-[60] overflow-hidden">{settingsEmployeeSearchResults.map(emp => (<button key={emp.id} onClick={() => setSelectedEmpForAdjustment(emp)} className="w-full p-4 flex items-center gap-3 hover:bg-blue-50 border-b border-gray-50 last:border-0"><div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs">{emp.name.charAt(0)}</div><div className="text-left"><p className="text-xs font-black text-gray-900">{emp.name}</p><p className="text-[9px] font-bold text-gray-400 uppercase">{emp.role} • {emp.id}</p></div></button>))}</div>)}</div>
-                    </div>
-                    <div className="lg:col-span-7">
-                      {selectedEmpForAdjustment ? (
-                        <div className="bg-gray-50 p-6 rounded-[2.5rem] border border-gray-100 space-y-6 animate-in slide-in-from-right-4 duration-500">
-                          <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-full bg-white flex items-center justify-center font-black text-blue-600 shadow-sm">{selectedEmpForAdjustment.name.charAt(0)}</div><div><h4 className="text-sm font-black text-gray-900">{selectedEmpForAdjustment.name}</h4><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{selectedEmpForAdjustment.role} • {selectedEmpForAdjustment.id}</p></div><button onClick={() => setSelectedEmpForAdjustment(null)} className="ml-auto p-2 text-gray-400 hover:text-red-600 transition-all"><X className="w-4 h-4" /></button></div>
-                          <div className="space-y-4">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Pilih Tipe Aksi</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {[{ id: 'ResetPhotoLimit', label: 'Reset Foto', icon: Camera, color: 'orange' }, { id: 'AddAccess', label: 'Add Access', icon: UserPlus, color: 'blue' }, { id: 'RemoveAccess', label: 'Remove Access', icon: UserX, color: 'red' }, { id: 'Promote', label: 'Promosi', icon: UserCheck, color: 'green' }, { id: 'Demote', label: 'Demosi', icon: UserMinus, color: 'purple' }].map((type) => (<button key={type.id} onClick={() => setAdjustmentType(type.id as any)} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all text-[9px] font-black uppercase ${adjustmentType === type.id ? `bg-white border-${type.color}-500 text-${type.color}-700 shadow-md` : 'bg-white border-transparent text-gray-500 hover:bg-gray-50'}`}><type.icon className="w-4 h-4" />{type.label}</button>))}
-                            </div>
-                          </div>
-                          {adjustmentType && adjustmentType !== 'ResetPhotoLimit' && adjustmentType !== 'RemoveAccess' && (<div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block px-1">Target Jabatan/Role</label><select value={adjustmentTargetRole} onChange={(e) => setAdjustmentTargetRole(e.target.value)} className="w-full p-4 bg-white rounded-2xl border-none font-bold text-sm outline-none shadow-sm">{Object.values(Role).filter(r => r !== selectedEmpForAdjustment.role && r !== Role.HUB_LEAD).map(r => (<option key={r} value={r}>{r}</option>))}</select></div>)}
-                          <div className="pt-4 flex gap-2"><button onClick={() => setSelectedEmpForAdjustment(null)} className="flex-1 py-4 bg-white text-gray-400 text-[10px] font-black uppercase rounded-2xl border border-gray-200">Batal</button><button onClick={handlePromotionSubmission} className="flex-2 py-4 px-8 bg-blue-600 text-white text-[10px] font-black uppercase rounded-2xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all">Ajukan & Generate Kode</button></div>
-                        </div>
-                      ) : (<div className="h-full min-h-[300px] border-2 border-dashed border-gray-100 rounded-[2.5rem] flex flex-col items-center justify-center p-8 text-center text-gray-300"><UsersIcon className="w-12 h-12 mb-4 opacity-30" /><p className="text-[10px] font-black uppercase tracking-[0.2em]">Pilih Karyawan Untuk Memulai Request</p></div>)}
-                    </div>
-                  </div>
-                </section>
-              )}
 
               {/* BATCH PRINT SECTION */}
               <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-8 no-print">
                  <div className="flex items-center justify-between border-b border-gray-50 pb-6">
                     <div className="flex items-center gap-3">
                        <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center"><Printer className="w-6 h-6 text-blue-600" /></div>
-                       <div><h3 className="text-lg font-black text-gray-900 leading-none">Cetak Kartu Karyawan (Batch Print)</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Sistem Percetakan ID Card Massal</p></div>
+                       <div><h3 className="text-lg font-black text-gray-900 leading-none">Cetak Kartu Karyawan</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Percetakan ID Card (Batch / Individual)</p></div>
                     </div>
-                    <button onClick={() => setShowPrintSettings(!showPrintSettings)} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 transition-all"><Settings2 className="w-5 h-5" /></button>
+                    <button 
+                      onClick={() => setShowPrintSettings(!showPrintSettings)} 
+                      className={`p-3 rounded-xl transition-all flex items-center gap-2 text-xs font-black uppercase ${showPrintSettings ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-400 hover:text-blue-600'}`}
+                    >
+                      <Settings2 className="w-5 h-5" /> 
+                      <span className="hidden sm:inline">Settings</span>
+                    </button>
                  </div>
 
-                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    <div className="lg:col-span-7 space-y-8">
+                 {showPrintSettings && (
+                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 animate-in slide-in-from-top-4 duration-300 grid grid-cols-1 md:grid-cols-3 gap-6">
                        <div className="space-y-4">
-                          <div className="flex flex-col sm:flex-row gap-4">
-                             <div className="flex-1 space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Filter Jabatan</label>
-                                <select value={printRoleFilter} onChange={(e) => { setPrintRoleFilter(e.target.value); setSelectedPrintUsers(new Set()); }} className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none font-bold text-sm outline-none">{uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}</select>
-                             </div>
-                             <div className="flex items-end">
-                                <button onClick={selectAllForPrint} className="px-6 py-3 bg-white border-2 border-gray-100 text-gray-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
-                                   {selectedPrintUsers.size === filteredUsersForPrint.length ? 'Batal Semua' : 'Pilih Semua'}
-                                </button>
-                             </div>
-                          </div>
-
-                          <div className="bg-gray-50 rounded-[2rem] border border-gray-100 p-4 max-h-[300px] overflow-y-auto no-scrollbar space-y-2">
-                             {filteredUsersForPrint.map(u => (
-                                <button key={u.id} onClick={() => togglePrintSelection(u.id)} className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selectedPrintUsers.has(u.id) ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-blue-50'}`}>
-                                   {selectedPrintUsers.has(u.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                   <div className="text-left leading-tight">
-                                      <p className="text-xs font-black">{u.name}</p>
-                                      <p className={`text-[9px] ${selectedPrintUsers.has(u.id) ? 'text-white/70' : 'text-gray-400'}`}>{u.id} • {u.role}</p>
-                                   </div>
-                                </button>
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-600"/> Paper Size</label>
+                          <div className="grid grid-cols-1 gap-2">
+                             {PAPER_PRESETS.map((paper) => (
+                               <button 
+                                 key={paper.id} 
+                                 onClick={() => setSelectedPaperPreset(paper)} 
+                                 className={`p-3 rounded-xl border-2 text-left transition-all ${selectedPaperPreset.id === paper.id ? 'border-blue-600 bg-white' : 'border-transparent bg-white/50 hover:bg-white'}`}
+                               >
+                                 <p className="text-[11px] font-black text-gray-900 leading-none mb-1">{paper.name}</p>
+                                 <p className="text-[9px] font-bold text-gray-400 uppercase">{paper.width}x{paper.height}mm</p>
+                               </button>
                              ))}
                           </div>
                        </div>
+                       <div className="space-y-4">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Maximize className="w-3.5 h-3.5 text-blue-600"/> Orientation</label>
+                          <div className="grid grid-cols-2 gap-2">
+                             <button onClick={() => setPaperOrientation('portrait')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'portrait' ? 'border-blue-600 bg-white text-blue-700' : 'border-transparent bg-white/50 text-gray-400'}`}><Smartphone className="w-6 h-6" /><span className="text-[10px] font-black uppercase">Portrait</span></button>
+                             <button onClick={() => setPaperOrientation('landscape')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'landscape' ? 'border-blue-600 bg-white text-blue-700' : 'border-transparent bg-white/50 text-gray-400'}`}><Tablet className="w-6 h-6 rotate-90" /><span className="text-[10px] font-black uppercase">Landscape</span></button>
+                          </div>
+                          <div className="pt-4 flex items-center gap-3">
+                             <button onClick={() => setFitToPaper(!fitToPaper)} className={`flex-1 py-3 rounded-xl border-2 text-[10px] font-black uppercase transition-all ${fitToPaper ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-400 border-gray-100'}`}>
+                                {fitToPaper ? 'Fit to Paper ON' : 'Fit to Paper OFF'}
+                             </button>
+                          </div>
+                       </div>
+                       <div className="space-y-4">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-blue-600"/> Visual Theme</label>
+                          <div className="grid grid-cols-5 gap-2">
+                            {ID_CARD_THEMES.map((theme) => (
+                              <button 
+                                key={theme.id} 
+                                onClick={() => setSelectedPrintTheme(theme)} 
+                                className={`h-10 rounded-lg border-2 transition-all flex items-center justify-center ${selectedPrintTheme.id === theme.id ? 'border-blue-500 ring-2 ring-blue-100' : 'border-white'}`} 
+                                style={{ backgroundColor: theme.primary }}
+                                title={theme.name}
+                              >
+                                {selectedPrintTheme.id === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
+                              </button>
+                            ))}
+                          </div>
+                       </div>
+                    </div>
+                 )}
 
-                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-600"/> Kertas</label>
-                           <div className="grid grid-cols-1 gap-2">
-                              {PAPER_PRESETS.map((paper) => (<button key={paper.id} onClick={() => setSelectedPaperPreset(paper)} className={`p-3 rounded-xl border-2 text-left transition-all ${selectedPaperPreset.id === paper.id ? 'border-blue-600 bg-blue-50' : 'border-gray-100 bg-white hover:border-blue-200'}`}><p className="text-[11px] font-black text-gray-900 leading-none mb-1">{paper.name}</p><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{paper.width}mm x {paper.height}mm</p></button>))}
-                           </div>
-                        </div>
-                        <div className="space-y-3">
-                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Maximize className="w-3.5 h-3.5 text-blue-600"/> Orientasi</label>
-                           <div className="grid grid-cols-2 gap-2">
-                              <button onClick={() => setPaperOrientation('portrait')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'portrait' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Smartphone className="w-6 h-6" /><span className="text-[10px] font-black uppercase tracking-widest">Portrait</span></button>
-                              <button onClick={() => setPaperOrientation('landscape')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'landscape' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-100 bg-white text-gray-400 hover:border-blue-200'}`}><Tablet className="w-6 h-6 rotate-90" /><span className="text-[10px] font-black uppercase tracking-widest">Landscape</span></button>
-                           </div>
-                        </div>
+                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    <div className="lg:col-span-7 space-y-6">
+                       <div className="flex flex-col sm:flex-row gap-4 items-end">
+                          <div className="flex-1 space-y-2">
+                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Filter by Role</label>
+                             <select 
+                               value={printRoleFilter} 
+                               onChange={(e) => { setPrintRoleFilter(e.target.value); setSelectedPrintUsers(new Set()); }} 
+                               className="w-full px-5 py-4 bg-gray-50 rounded-2xl border-none font-bold text-sm outline-none shadow-sm appearance-none"
+                             >
+                               {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                             </select>
+                          </div>
+                          <button onClick={selectAllForPrint} className="px-6 py-4 bg-white border-2 border-gray-100 text-gray-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all h-[58px]">
+                             {selectedPrintUsers.size === filteredUsersForPrint.length ? 'Batal Semua' : 'Pilih Semua'}
+                          </button>
                        </div>
 
-                       <div className="space-y-3">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-blue-600"/> Tema Visual</label>
-                          <div className="grid grid-cols-5 gap-2">{ID_CARD_THEMES.map((theme) => (<button key={theme.id} onClick={() => setSelectedPrintTheme(theme)} className={`h-8 rounded-lg border-2 transition-all ${selectedPrintTheme.id === theme.id ? 'border-blue-500 shadow-inner' : 'border-transparent shadow-sm'}`} style={{ backgroundColor: theme.primary }}></button>))}</div>
+                       <div className="bg-gray-50 rounded-[2.5rem] border border-gray-100 p-4 max-h-[400px] overflow-y-auto no-scrollbar space-y-2">
+                          {filteredUsersForPrint.length === 0 ? (
+                            <div className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">No employees found in this role</div>
+                          ) : filteredUsersForPrint.map(u => (
+                             <div key={u.id} className={`group flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${selectedPrintUsers.has(u.id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-transparent hover:border-blue-100'}`}>
+                                <button onClick={() => togglePrintSelection(u.id)} className="flex items-center gap-3 flex-1 text-left">
+                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs ${selectedPrintUsers.has(u.id) ? 'bg-white text-blue-600' : 'bg-blue-50 text-blue-500'}`}>
+                                      {selectedPrintUsers.has(u.id) ? <CheckSquare className="w-5 h-5" /> : u.name.charAt(0)}
+                                   </div>
+                                   <div className="leading-tight">
+                                      <p className={`text-xs font-black ${selectedPrintUsers.has(u.id) ? 'text-white' : 'text-gray-900'}`}>{u.name}</p>
+                                      <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedPrintUsers.has(u.id) ? 'text-white/70' : 'text-gray-400'}`}>{u.id} • {u.role}</p>
+                                   </div>
+                                </button>
+                                <button 
+                                  onClick={() => handlePrint(u.id)} 
+                                  className={`p-3 rounded-xl transition-all ${selectedPrintUsers.has(u.id) ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-50 text-gray-400 hover:text-blue-600'}`}
+                                  title="Print One by One"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                             </div>
+                          ))}
                        </div>
 
-                       <button onClick={handlePrint} className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg transition-all flex items-center justify-center gap-3">
-                          <Printer className="w-5 h-5" /> Cetak {selectedPrintUsers.size} Kartu
+                       <button 
+                         onClick={() => handlePrint()} 
+                         disabled={selectedPrintUsers.size === 0}
+                         className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${selectedPrintUsers.size > 0 ? 'bg-gray-900 text-white hover:bg-black active:scale-95' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                       >
+                          <Printer className="w-5 h-5" /> Cetak {selectedPrintUsers.size} Kartu (Batch)
                        </button>
                     </div>
 
-                    <div className="lg:col-span-5 flex flex-col items-center">
-                       <div className="w-full space-y-4">
-                          <div className="flex items-center gap-2 px-1"><Eye className="w-4 h-4 text-blue-600" /><h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Preview Antrean</h4></div>
-                          <div className="bg-gray-200 p-8 rounded-[3rem] border-2 border-dashed border-gray-100 flex items-center justify-center overflow-hidden min-h-[400px]">
+                    <div className="lg:col-span-5">
+                       <div className="space-y-4">
+                          <div className="flex items-center gap-2 px-1"><Eye className="w-4 h-4 text-blue-600" /><h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Live Preview</h4></div>
+                          <div className="bg-gray-200 p-8 rounded-[3rem] border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden min-h-[450px] relative">
                              {selectedPrintUsers.size > 0 ? (
-                                <div className="bg-white shadow-2xl relative flex items-center justify-center transition-all duration-500 border border-gray-300" style={{ width: `${effectiveDims.w * 2.5}px`, height: `${effectiveDims.h * 2.5}px` }}>
-                                   <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h) * 0.5})`, transformOrigin: 'center' }}>
-                                      <EmployeeCard employee={usersWithAvatars.find(u => selectedPrintUsers.has(u.id))!} isCurrentUser={false} currentUserRole={currentUser.role} hasChangedAvatar={false} theme={selectedPrintTheme} />
+                                <div 
+                                  className="bg-white shadow-2xl relative flex items-center justify-center transition-all duration-500 border border-gray-300" 
+                                  style={{ width: `${effectiveDims.w * 3}px`, height: `${effectiveDims.h * 3}px` }}
+                                >
+                                   <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h) * 0.65})`, transformOrigin: 'center' }}>
+                                      <EmployeeCard employee={usersWithAvatars.find(u => selectedPrintUsers.has(u.id))!} isCurrentUser={false} currentUserRole={currentUser.role} theme={selectedPrintTheme} hasChangedAvatar={false} orientation={paperOrientation} />
                                    </div>
                                 </div>
                              ) : (
-                                <div className="text-center p-8"><Printer className="w-12 h-12 text-gray-300 mx-auto mb-4" /><p className="text-[10px] font-black uppercase text-gray-400 tracking-widest leading-loose">Pilih karyawan untuk melihat<br/>pratinjau cetak</p></div>
+                                <div className="text-center p-8"><Printer className="w-12 h-12 text-gray-300 mx-auto mb-4" /><p className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] leading-loose">Pilih personel untuk melihat<br/>pratinjau cetak otomatis</p></div>
                              )}
                           </div>
-                          {selectedPrintUsers.size > 1 && <p className="text-[9px] font-black text-blue-600 uppercase text-center tracking-[0.2em]">+ {selectedPrintUsers.size - 1} Kartu lainnya dalam antrean</p>}
+                          {selectedPrintUsers.size > 1 && <p className="text-[9px] font-black text-blue-600 uppercase text-center tracking-[0.2em]">+ {selectedPrintUsers.size - 1} Personnel in print queue</p>}
                        </div>
                     </div>
                  </div>
+              </section>
+
+              {/* History & Monitoring Request */}
+              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center"><History className="w-6 h-6 text-orange-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Monitoring Request</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pantau Progres & Kode Verifikasi</p></div></div>
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left min-w-[800px]"><thead className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50"><tr className="border-b border-gray-50"><th className="py-4 px-2 whitespace-nowrap">Timestamp</th><th className="py-4 px-2 whitespace-nowrap">Karyawan</th><th className="py-4 px-2 whitespace-nowrap">Tipe</th><th className="py-4 px-2 whitespace-nowrap">Status</th><th className="py-4 px-2 whitespace-nowrap">Kode SL</th><th className="py-4 px-2 whitespace-nowrap">Kode HL</th></tr></thead><tbody className="divide-y divide-gray-50">{promotions.slice().reverse().map((req) => (<tr key={req.id} className="text-xs hover:bg-gray-50/50 transition-colors"><td className="py-4 px-2 font-mono text-gray-400 whitespace-nowrap">{new Date(req.timestamp).toLocaleDateString()}</td><td className="py-4 px-2 whitespace-nowrap"><div className="font-bold text-gray-900">{req.employeeName}</div><div className="text-[9px] text-gray-400">{req.employeeId}</div></td><td className="py-4 px-2 whitespace-nowrap"><span className="px-2 py-1 bg-gray-100 rounded-md text-[9px] font-black uppercase">{req.type}</span></td><td className="py-4 px-2 whitespace-nowrap"><span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{req.status}</span></td><td className="py-4 px-2 whitespace-nowrap">{req.verificationCode && <div className="flex items-center gap-2"><span className="font-mono font-bold text-indigo-600">{req.verificationCode}</span><button onClick={() => copyToClipboard(req.verificationCode!)} className="p-1 hover:bg-gray-100 rounded transition-colors hover:text-blue-600"><Copy className="w-3.5 h-3.5" /></button></div>}</td><td className="py-4 px-2 whitespace-nowrap">{req.nextVerificationCode && <div className="flex items-center gap-2"><span className="font-mono font-bold text-blue-600">{req.nextVerificationCode}</span><button onClick={() => copyToClipboard(req.nextVerificationCode!)} className="p-1 hover:bg-gray-100 rounded transition-colors hover:text-blue-600"><Copy className="w-3.5 h-3.5" /></button></div>}</td></tr>))}</tbody></table>
+                </div>
               </section>
             </div>
           )}
