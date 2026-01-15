@@ -484,7 +484,35 @@ const App: React.FC = () => {
           {activeMenu === 'attendance' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><h2 className="text-2xl font-bold text-gray-900">Daily Attendance</h2><p className="text-gray-500 text-sm">Staff Attendance & Schedule Monitoring</p></div><div className="flex gap-2">{['All', 'Hadir', 'Off'].map(f => (<button key={f} onClick={() => setAttendanceFilter(f)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${attendanceFilter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 border border-gray-100'}`}>{f}</button>))}</div></div>
-               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden"><table className="w-full text-left"><thead><tr className="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th className="px-6 py-5">Ops ID</th><th className="px-6 py-5">Nama</th><th className="px-6 py-5">Jabatan</th><th className="px-6 py-5">Status</th><th className="px-6 py-5">Keterangan</th></tr></thead><tbody className="divide-y divide-gray-50">{filteredAttendance.map((att, i) => (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-4 font-mono text-xs text-gray-400">{att.opsId}</td><td className="px-6 py-4 font-bold text-gray-900">{att.name}</td><td className="px-6 py-4 text-xs font-bold text-gray-500">{att.role}</td><td className="px-6 py-4"><span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${att.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>{att.status}</span></td><td className="px-6 py-4 text-xs font-bold text-gray-400">{att.remarks || '-'}</td></tr>))}</tbody></table></div>
+               {/* FIX: Improved horizontal scroll stability for mobile with min-w-[800px] and whitespace-nowrap */}
+               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left min-w-[800px]">
+                    <thead>
+                      <tr className="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                        <th className="px-6 py-5 whitespace-nowrap">Ops ID</th>
+                        <th className="px-6 py-5 whitespace-nowrap">Nama</th>
+                        <th className="px-6 py-5 whitespace-nowrap">Jabatan</th>
+                        <th className="px-6 py-5 whitespace-nowrap">Status</th>
+                        <th className="px-6 py-5 whitespace-nowrap">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredAttendance.map((att, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-xs text-gray-400 whitespace-nowrap">{att.opsId}</td>
+                          <td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">{att.name}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-gray-500 whitespace-nowrap">{att.role}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${att.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                              {att.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-bold text-gray-400 whitespace-nowrap">{att.remarks || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+               </div>
             </div>
           )}
 
@@ -525,26 +553,27 @@ const App: React.FC = () => {
               {/* History & Monitoring Section */}
               <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6">
                 <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center"><History className="w-6 h-6 text-orange-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">History & Monitoring Request</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pantau Progres & Kode Verifikasi Aktif</p></div></div>
+                {/* FIX: Improved horizontal scroll stability for mobile with min-w-[800px] and whitespace-nowrap */}
                 <div className="overflow-x-auto no-scrollbar">
-                  <table className="w-full text-left">
+                  <table className="w-full text-left min-w-[800px]">
                     <thead>
                       <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50">
-                        <th className="py-4 px-2">Timestamp</th>
-                        <th className="py-4 px-2">Karyawan</th>
-                        <th className="py-4 px-2">Tipe</th>
-                        <th className="py-4 px-2">Status</th>
-                        <th className="py-4 px-2">Kode SL</th>
-                        <th className="py-4 px-2">Kode HL</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Timestamp</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Karyawan</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Tipe</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Status</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Kode SL</th>
+                        <th className="py-4 px-2 whitespace-nowrap">Kode HL</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {promotions.slice().reverse().map((req) => (
                         <tr key={req.id} className="text-xs hover:bg-gray-50/50 transition-colors">
-                          <td className="py-4 px-2 font-mono text-gray-400">{new Date(req.timestamp).toLocaleDateString()}</td>
-                          <td className="py-4 px-2"><div className="font-bold text-gray-900">{req.employeeName}</div><div className="text-[9px] text-gray-400">{req.employeeId}</div></td>
-                          <td className="py-4 px-2"><span className="px-2 py-1 bg-gray-100 rounded-md text-[9px] font-black uppercase">{req.type}</span></td>
-                          <td className="py-4 px-2"><span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{req.status}</span></td>
-                          <td className="py-4 px-2">
+                          <td className="py-4 px-2 font-mono text-gray-400 whitespace-nowrap">{new Date(req.timestamp).toLocaleDateString()}</td>
+                          <td className="py-4 px-2 whitespace-nowrap"><div className="font-bold text-gray-900">{req.employeeName}</div><div className="text-[9px] text-gray-400">{req.employeeId}</div></td>
+                          <td className="py-4 px-2 whitespace-nowrap"><span className="px-2 py-1 bg-gray-100 rounded-md text-[9px] font-black uppercase">{req.type}</span></td>
+                          <td className="py-4 px-2 whitespace-nowrap"><span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{req.status}</span></td>
+                          <td className="py-4 px-2 whitespace-nowrap">
                             {req.verificationCode && (
                               <div className="flex items-center gap-2">
                                 <span className="font-mono font-bold text-indigo-600">{req.verificationCode}</span>
@@ -552,7 +581,7 @@ const App: React.FC = () => {
                               </div>
                             )}
                           </td>
-                          <td className="py-4 px-2">
+                          <td className="py-4 px-2 whitespace-nowrap">
                             {req.nextVerificationCode ? (
                               <div className="flex items-center gap-2">
                                 <span className="font-mono font-bold text-blue-600">{req.nextVerificationCode}</span>
