@@ -34,6 +34,7 @@ interface EmployeeCardProps {
   hasChangedAvatar: boolean;
   onAvatarChange?: (id: string, file: File) => void;
   theme?: CardTheme;
+  orientation?: 'portrait' | 'landscape';
 }
 
 const EmployeeCard: React.FC<EmployeeCardProps> = ({ 
@@ -42,7 +43,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
   currentUserRole,
   hasChangedAvatar, 
   onAvatarChange,
-  theme = ID_CARD_THEMES[0]
+  theme = ID_CARD_THEMES[0],
+  orientation = 'portrait'
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const isAdminTracer = currentUserRole === Role.ADMIN_TRACER;
@@ -61,6 +63,92 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
 
   const isPremium = theme.id.includes('gold') || theme.id.includes('platinum') || theme.id.includes('obsidian') || theme.id.includes('carbon');
 
+  if (orientation === 'landscape') {
+    return (
+      <div className="flex flex-col items-center group/card">
+        <div className="w-[440px] h-[275px] bg-white rounded-[2rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-row items-center p-6 gap-6">
+          
+          {/* Background Gradients */}
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+            <div className="absolute -top-16 -left-16 w-64 h-64 rounded-full opacity-100" style={{ background: `linear-gradient(135deg, ${theme.secondary}, ${theme.primary})` }}></div>
+            {isPremium && <div className="absolute top-4 right-4 text-black/5"><Crown className="w-12 h-12" /></div>}
+          </div>
+
+          {/* Left Side: Avatar */}
+          <div className="relative z-10 shrink-0">
+            <div className="w-32 h-32 rounded-3xl border-[4px] p-0.5 bg-white shadow-xl overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
+              {employee.avatarUrl ? (
+                <img src={employee.avatarUrl} alt={employee.name} className="w-full h-full object-cover rounded-2xl" />
+              ) : (
+                <div className="w-full h-full bg-gray-50 rounded-2xl flex items-center justify-center">
+                  <UserIcon className="w-16 h-16 text-gray-200" />
+                </div>
+              )}
+            </div>
+            {canEdit && (
+              <div className="absolute -bottom-2 -right-2 z-20">
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 rounded-xl shadow-lg border-2 border-white transition-all hover:scale-110 active:scale-95 text-white"
+                  style={{ backgroundColor: isAdminTracer ? '#2563eb' : theme.primary }}
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right Side: Details */}
+          <div className="relative z-10 flex-1 flex flex-col justify-between h-full py-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-white shadow-sm border" style={{ borderColor: theme.primary }}>
+                   <Star className="w-3 h-3 fill-current" style={{ color: theme.primary }} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-gray-900 uppercase tracking-tighter">Tompobulu Hub</span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Logistik Indonesia</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className={`${getNameFontSize(employee.name)} font-black text-gray-900 leading-tight uppercase tracking-wide`}>
+                  {employee.name}
+                </h3>
+                <span className="inline-block px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest text-white" style={{ backgroundColor: theme.primary }}>
+                  {employee.role}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">ID</span>
+                  <span className="text-[10px] font-black text-gray-800 font-mono">{employee.id}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Base</span>
+                  <span className="text-[9px] font-black text-gray-700 uppercase">{employee.station || 'Tompobulu'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-end justify-between">
+              <div className="flex items-center gap-1 text-gray-400">
+                <ShieldCheck className="w-3 h-3 text-blue-500" />
+                <span className="text-[6px] font-black uppercase tracking-[0.2em]">Authorized</span>
+              </div>
+              <div className="bg-white p-1 rounded-lg border border-gray-100 shadow-sm">
+                <QRCodeSVG value={employee.id} size={32} fgColor={theme.secondary} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Portrait Layout (Default)
   return (
     <div className="flex flex-col items-center group/card">
       <div className="w-[275px] h-[440px] bg-white rounded-[2rem] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] overflow-hidden relative border border-gray-100 flex flex-col items-center">
@@ -72,7 +160,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           {isPremium && <div className="absolute top-4 right-4 text-white/20"><Crown className="w-8 h-8" /></div>}
         </div>
 
-        {/* Brand Header - More Compact */}
+        {/* Brand Header */}
         <div className="relative mt-6 mb-3 flex flex-col items-center z-10">
           <div className="flex items-center gap-1.5 px-3 py-1 bg-white/15 backdrop-blur-md rounded-full border border-white/20 shadow-sm">
             <div className="w-5 h-5 rounded-full border-[1.5px] flex items-center justify-center bg-white shadow-sm" style={{ borderColor: theme.primary }}>
@@ -85,7 +173,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           </div>
         </div>
 
-        {/* Profile Picture Section - Tighter spacing */}
+        {/* Profile Picture Section */}
         <div className="relative z-10">
           <div className="w-24 h-24 rounded-full border-[4px] p-0.5 bg-white shadow-xl overflow-hidden flex items-center justify-center" style={{ borderColor: theme.primary }}>
             {employee.avatarUrl ? (
@@ -117,7 +205,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           )}
         </div>
 
-        {/* Name Plate - Reduced padding and margin */}
+        {/* Name Plate */}
         <div className="relative z-10 mt-4 w-[85%]">
           <div className="py-2 px-2 rounded-[1rem] shadow-lg text-center border-b-2 border-black/10" 
                style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
@@ -134,7 +222,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           </div>
         </div>
 
-        {/* Detail List - Tighter spacing */}
+        {/* Detail List */}
         <div className="relative z-10 mt-3 w-full px-6 space-y-2">
           <div className="flex items-center justify-between border-b border-gray-100 pb-1">
             <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Employee ID</span>
@@ -150,7 +238,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({
           </div>
         </div>
 
-        {/* Footer Area - Height adjusted */}
+        {/* Footer Area */}
         <div className="absolute bottom-0 left-0 w-full h-[90px] bg-gray-50/95 backdrop-blur-sm border-t border-gray-100 flex flex-col items-center justify-center pb-2 z-10">
           <div className="bg-white p-1.5 rounded-lg shadow-inner mb-1 border border-gray-100">
             <QRCodeSVG value={employee.id} size={40} fgColor={theme.secondary} />
