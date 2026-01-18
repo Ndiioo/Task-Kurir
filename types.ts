@@ -67,9 +67,10 @@ export interface PromotionRequest {
   proposedRole: Role | string;
   requestedBy: string;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Verified_SL';
-  type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | 'AddAccess' | 'RemoveAccess';
+  type: 'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | 'AddAccess' | 'RemoveAccess' | 'DeleteAccount' | 'NonactiveAccount';
   verificationCode?: string;
   nextVerificationCode?: string;
   feedback?: string;
   timestamp: string;
+  newId?: string; // Digunakan untuk ID baru saat demosi ke kurir
 }

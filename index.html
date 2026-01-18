@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,8 +6,15 @@
   <title>Tompobulu Hub Monitor</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Babel Standalone untuk merubah TSX menjadi JS di browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- ES Module Shims untuk mendukung importmap di semua browser -->
+  <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+
   <style>
-    body { font-family: 'Inter', sans-serif; }
+    body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
     @keyframes marquee {
       0% { transform: translateX(100%); }
       100% { transform: translateX(-100%); }
@@ -20,16 +26,56 @@
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Loading state sebelum React dimuat */
+    #root:empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #f9fafb;
+    }
+    #root:empty::before {
+      content: "";
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e5e7eb;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    #root:empty::after {
+      content: "MEMUAT SISTEM MONITORING...";
+      font-size: 10px;
+      font-weight: 900;
+      color: #9ca3af;
+      letter-spacing: 0.2em;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
-<script type="importmap">
+
+  <script type="importmap">
 {
   "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "qrcode.react": "https://esm.sh/qrcode.react@^4.2.0"
+    "react": "https://esm.sh/react@19.0.0",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "react-dom": "https://esm.sh/react-dom@19.0.0?deps=react@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client?deps=react@19.0.0",
+    "react/jsx-runtime": "https://esm.sh/react@19.0.0/jsx-runtime",
+    "lucide-react": "https://esm.sh/lucide-react@0.462.0?deps=react@19.0.0",
+    "recharts": "https://esm.sh/recharts@2.13.3?deps=react@19.0.0",
+    "qrcode.react": "https://esm.sh/qrcode.react@4.1.0?deps=react@19.0.0",
+    "./App": "./App.tsx",
+    "./types": "./types.ts",
+    "./constants": "./constants.ts",
+    "./services/dataService": "./services/dataService.ts",
+    "./components/Layout": "./components/Layout.tsx",
+    "./components/RunningFeed": "./components/RunningFeed.tsx",
+    "./components/QRCodeModal": "./components/QRCodeModal.tsx",
+    "./components/EmployeeCard": "./components/EmployeeCard.tsx",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
@@ -37,6 +83,9 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div id="root"></div>
+
+  <!-- Menjalankan aplikasi melalui Babel dengan memproses semua import lokal -->
+  <script type="text/babel" data-type="module" data-presets="typescript,react" src="index.tsx"></script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert, Printer, Settings2, Layers, Eye, Palette, Camera, Maximize, FileText, Smartphone, Tablet, Key, Hash, Send, UserPlus, UserX, X, Briefcase as RoleIcon, Clock as TimeIcon, Trash2, Clipboard, Copy, History, CheckSquare, Square, AlertTriangle, Smartphone as DeviceIcon, Settings } from 'lucide-react';
+import { Search, Loader2, Info, CheckCircle2, AlertCircle, TrendingUp, Package, Clock, Users as UsersIcon, User as UserIcon, ChevronRight, Filter, Activity, PieChart as PieIcon, Briefcase, MapPin, ClipboardList, LogOut, ArrowRightLeft, UserCheck, UserMinus, ShieldAlert, Printer, Settings2, Layers, Eye, Palette, Camera, Maximize, FileText, Smartphone, Tablet, Key, Hash, Send, UserPlus, UserX, X, Briefcase as RoleIcon, Clock as TimeIcon, Trash2, Clipboard, Copy, History, CheckSquare, Square, AlertTriangle, Smartphone as DeviceIcon, Settings, ShieldCheck, UserCog, RefreshCw, Calendar, SlidersHorizontal } from 'lucide-react';
 import { Role, User, PackageData, AssignTask, AttendanceRecord, PromotionRequest, TaskItem } from './types';
 import { getAllUsers, getTasks, getAttendance, normalizeId, updateUserInSpreadsheet, updateTaskStatusInSpreadsheet, logActivityToSpreadsheet } from './services/dataService';
 import Layout from './components/Layout';
@@ -12,9 +12,8 @@ import { ROLE_COLORS } from './constants';
 const SESSION_KEY = 'tompobulu_user_session';
 const LAST_ACTIVE_KEY = 'tompobulu_last_active';
 const DEVICE_ID_KEY = 'tompobulu_device_id';
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; 
+const INACTIVITY_TIMEOUT = 10 * 60 * 1000; 
 
-// Generate unique ID for this device if not exists
 const getDeviceId = () => {
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
@@ -68,18 +67,20 @@ const App: React.FC = () => {
   const [sessionConflict, setSessionConflict] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
+  // Filter States
   const [empStationFilter, setEmpStationFilter] = useState('All Stations');
   const [empRoleFilter, setEmpRoleFilter] = useState('All Roles');
   const [empSearch, setEmpSearch] = useState('');
   const [taskHubFilter, setTaskHubFilter] = useState('All Hubs');
   const [taskRoleFilter, setTaskRoleFilter] = useState('All Roles');
   const [attendanceFilter, setAttendanceFilter] = useState('All');
-  const [searchEmployeeQuery, setSearchEmployeeQuery] = useState('');
-  const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
-  const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<Role | string>('');
-  const [adjustmentType, setAdjustmentType] = useState<'Promote' | 'Demote' | 'ChangeAccess' | 'ResetPhotoLimit' | 'AddAccess' | 'RemoveAccess' | ''>('');
   
-  // Printing States
+  const [selectedEmpForAdjustment, setSelectedEmpForAdjustment] = useState<User | null>(null);
+  const [adjustmentTargetRole, setAdjustmentTargetRole] = useState<string>('');
+  const [adjustmentType, setAdjustmentType] = useState<string>('');
+  const [adjustmentNewId, setAdjustmentNewId] = useState<string>('');
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
+  
   const [printRoleFilter, setPrintRoleFilter] = useState('All Roles');
   const [selectedPrintUsers, setSelectedPrintUsers] = useState<Set<string>>(new Set());
   const [selectedPaperPreset, setSelectedPaperPreset] = useState<PaperPreset>(PAPER_PRESETS[0]);
@@ -111,7 +112,7 @@ const App: React.FC = () => {
   }, []);
 
   const checkIsCourier = useCallback((role: string) => {
-    const r = role.toLowerCase();
+    const r = (role || '').toLowerCase();
     return r.includes('kurir') || r.includes('courier') || r.includes('mitra');
   }, []);
 
@@ -119,9 +120,11 @@ const App: React.FC = () => {
     if (!isBackground) setIsLoading(true);
     try {
       const users = await getAllUsers();
+      
       const spreadsheetAvatars: Record<string, string> = {};
       users.forEach(u => u.avatarUrl && (spreadsheetAvatars[u.id] = u.avatarUrl));
       setCustomAvatars(prev => ({ ...prev, ...spreadsheetAvatars }));
+      
       const courierList = users.filter(u => checkIsCourier(u.role.toString()));
       const opsList = users.filter(u => !checkIsCourier(u.role.toString()));
       const [taskData, attData] = await Promise.all([getTasks(courierList), getAttendance(opsList)]);
@@ -135,15 +138,12 @@ const App: React.FC = () => {
       if (currentSavedUser) {
         try {
           const parsed = JSON.parse(currentSavedUser);
-          const updatedSelf = users.find(u => u.id === parsed.id);
-          
+          const updatedSelf = users.find(u => normalizeId(u.id) === normalizeId(parsed.id));
           if (updatedSelf) {
-            // Check for session conflict (login on another device)
             const localDeviceId = getDeviceId();
             if (updatedSelf.deviceId && updatedSelf.deviceId !== localDeviceId) {
               setSessionConflict(true);
             }
-
             const newUser = { ...parsed, ...updatedSelf };
             setCurrentUser(newUser);
             localStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
@@ -160,54 +160,32 @@ const App: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Real-time Sync & Session Monitoring (Every 30 seconds)
-  useEffect(() => {
-    if (!currentUser || sessionConflict) return;
-    const interval = setInterval(() => {
-      fetchData(true);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [currentUser, sessionConflict, fetchData]);
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    
-    if (allUsers.length === 0 && isLoading) {
-      setLoginError('Sistem sedang sinkronisasi data. Harap tunggu sebentar...');
-      return;
-    }
-
     setIsLoggingIn(true);
     setTimeout(async () => {
       try {
         const normalizedEnteredId = normalizeId(loginId);
-        const user = allUsers.find(u => u.id === normalizedEnteredId && (u.password === loginPwd || loginPwd === 'admin123'));
+        const user = allUsers.find(u => {
+           const uId = normalizeId(u.id);
+           const uPwd = u.password?.toString().trim();
+           return uId === normalizedEnteredId && (uPwd === loginPwd.trim() || loginPwd === 'admin123');
+        });
         
         if (user) {
-          if (checkIsCourier(user.role as string)) {
-            const hasTask = tasks.some(t => t.courierId === user.id);
-            if (!hasTask) {
-               setLoginError(`Hai ${user.name}, Hari ini Anda tidak memiliki tugas pengantaran yang tercatat pada sistem, silahkan konfirmasi ke Shift Lead Anda.`);
-               setIsLoggingIn(false);
-               return;
-            }
-          }
-          
           const localDeviceId = getDeviceId();
-          // Update device ID in spreadsheet immediately on login
           await updateUserInSpreadsheet(user.id, { deviceId: localDeviceId });
-          
           const userWithDevice = { ...user, deviceId: localDeviceId };
           setCurrentUser(userWithDevice);
           localStorage.setItem(SESSION_KEY, JSON.stringify(userWithDevice));
           localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
           setSessionConflict(false);
         } else { 
-          setLoginError('User ID atau Password tidak valid.'); 
+          setLoginError('ID atau Password salah.'); 
         }
       } catch (err) {
-        setLoginError('Terjadi kesalahan saat memproses login.');
+        setLoginError('Gagal memproses login.');
       } finally {
         setIsLoggingIn(false);
       }
@@ -217,21 +195,10 @@ const App: React.FC = () => {
   const handleAvatarChange = (userId: string, file: File) => {
     const userToUpdate = allUsers.find(u => u.id === userId) || currentUser;
     const currentCount = userToUpdate?.photoChangeCount || 0;
-    
     const isAdminTracer = currentUser?.role === Role.ADMIN_TRACER;
 
     if (!isAdminTracer && currentCount >= 5) {
-      if (confirm("Limit tercapai. Ajukan reset ke Shift Lead?") && currentUser) {
-        const code = generateUniqueCode('SL');
-        const newReq: PromotionRequest = {
-          id: `reset-${Date.now()}`, employeeId: userToUpdate?.id || '', employeeName: userToUpdate?.name || '',
-          currentRole: userToUpdate?.role || '', proposedRole: userToUpdate?.role || '',
-          requestedBy: currentUser.name, status: 'Pending', type: 'ResetPhotoLimit', verificationCode: code, timestamp: new Date().toISOString()
-        };
-        setPromotions(prev => [...prev, newReq]);
-        logActivityToSpreadsheet({ ...newReq, action: 'NEW_REQUEST' });
-        alert(`Request dibuat. Kode: ${code}`);
-      }
+      alert("Limit ganti foto profil 5x tercapai.");
       return;
     }
 
@@ -256,247 +223,153 @@ const App: React.FC = () => {
   const dashboardStats = useMemo(() => {
     const targetHubs = ['Tompobulu Hub', 'Biringbulu Hub', 'Bungaya Hub'];
     return targetHubs.map(hubName => {
-      const hubTasks = tasks.filter(t => t.hub === hubName || t.hub.toLowerCase().includes(hubName.split(' ')[0].toLowerCase()));
-      let totalPkgs = 0, scannedPkgs = 0, totalTasksCount = 0, scannedTasksCount = 0;
+      const hubTasks = tasks.filter(t => t.hub === hubName || (t.hub || '').toLowerCase().includes(hubName.split(' ')[0].toLowerCase()));
+      let totalPkgs = 0, scannedPkgs = 0;
       hubTasks.forEach(group => group.tasks.forEach(task => {
-        totalPkgs += task.packageCount; totalTasksCount += 1;
-        if (scannedTaskIds.has(task.taskId)) { scannedPkgs += task.packageCount; scannedTasksCount += 1; }
+        totalPkgs += task.packageCount;
+        if (scannedTaskIds.has(task.taskId)) scannedPkgs += task.packageCount;
       }));
-      return { name: hubName, totalPackages: totalPkgs, scannedPackages: scannedPkgs, unscannedPackages: totalPkgs - scannedPkgs, totalTasks: totalTasksCount, scannedTasks: scannedTasksCount, pendingTasks: totalTasksCount - scannedTasksCount, progress: totalPkgs > 0 ? Math.round((scannedPkgs / totalPkgs) * 100) : 0 };
+      return { name: hubName, totalPackages: totalPkgs, progress: totalPkgs > 0 ? Math.round((scannedPkgs / totalPkgs) * 100) : 0 };
     });
   }, [tasks, scannedTaskIds]);
 
   const filteredTasks = useMemo(() => {
     if (currentUser && checkIsCourier(currentUser.role as string)) {
-      return tasks.filter(t => t.courierId === currentUser.id);
+      return tasks.filter(t => normalizeId(t.courierId) === normalizeId(currentUser.id));
     }
     return tasks.filter(t => (taskHubFilter === 'All Hubs' || t.hub === taskHubFilter) && (taskRoleFilter === 'All Roles' || t.courierRole === taskRoleFilter));
   }, [tasks, taskHubFilter, taskRoleFilter, currentUser, checkIsCourier]);
 
   const filteredAttendance = useMemo(() => attendanceFilter === 'All' ? attendance : attendance.filter(a => a.status === attendanceFilter), [attendance, attendanceFilter]);
-  const uniqueStations = useMemo(() => ['All Stations', ...new Set(allUsers.map(u => u.station).filter(Boolean))], [allUsers]);
-  const uniqueRoles = useMemo(() => ['All Roles', ...new Set(allUsers.map(u => u.role).filter(Boolean))], [allUsers]);
+  
+  const uniqueStations = useMemo(() => ['All Stations', ...new Set(allUsers.map(u => (u.station || '').trim()).filter(Boolean))].sort(), [allUsers]);
+  const uniqueRoles = useMemo(() => ['All Roles', ...new Set(allUsers.map(u => (u.role || '').trim()).filter(Boolean))].sort(), [allUsers]);
+  
   const usersWithAvatars = useMemo(() => allUsers.map(u => ({ ...u, avatarUrl: customAvatars[u.id] || u.avatarUrl })), [allUsers, customAvatars]);
-  const filteredEmployees = useMemo(() => usersWithAvatars.filter(u => (empStationFilter === 'All Stations' || u.station === empStationFilter) && (empRoleFilter === 'All Roles' || u.role === empRoleFilter) && (u.name.toLowerCase().includes(empSearch.toLowerCase()) || u.id.toLowerCase().includes(empSearch.toLowerCase()))), [usersWithAvatars, empStationFilter, empRoleFilter, empSearch]);
-
-  const handleCodeVerification = () => {
-    if (!verificationInput.trim()) return;
-    const input = verificationInput.trim().toUpperCase();
-    const req = promotions.find(p => p.verificationCode === input || p.nextVerificationCode === input);
-    if (!req) { alert("Kode tidak valid."); return; }
-    setPendingReview(req);
-    setVerificationInput('');
-  };
+  
+  const filteredEmployees = useMemo(() => {
+    return usersWithAvatars.filter(u => {
+      const matchStation = empStationFilter === 'All Stations' || (u.station || '').trim() === empStationFilter;
+      const matchRole = empRoleFilter === 'All Roles' || (u.role || '').trim() === empRoleFilter;
+      const matchSearch = u.name.toLowerCase().includes(empSearch.toLowerCase()) || u.id.toLowerCase().includes(empSearch.toLowerCase());
+      return matchStation && matchRole && matchSearch;
+    });
+  }, [usersWithAvatars, empStationFilter, empRoleFilter, empSearch]);
 
   const processReview = async (isApproved: boolean) => {
     if (!pendingReview || !currentUser) return;
     setIsVerifying(true);
     const req = pendingReview;
-    
     if (isApproved) {
       if (req.status === 'Pending' && currentUser.role === Role.SHIFT_LEAD) {
         const nextCode = generateUniqueCode('HL');
         const updatedReq: PromotionRequest = { ...req, status: 'Verified_SL', nextVerificationCode: nextCode };
         setPromotions(prev => prev.map(p => p.id === req.id ? updatedReq : p));
         await logActivityToSpreadsheet({ ...updatedReq, action: 'VERIFIED_SL', approver: currentUser.name });
-        alert(`Verifikasi Shift Lead Berhasil. Kode Hub Lead: ${nextCode}`);
+        alert(`Berhasil. Kode Hub Lead: ${nextCode}`);
       } else if (req.status === 'Verified_SL' && currentUser.role === Role.HUB_LEAD) {
         const approvedReq: PromotionRequest = { ...req, status: 'Approved' };
         setPromotions(prev => prev.map(p => p.id === req.id ? approvedReq : p));
         await logActivityToSpreadsheet({ ...approvedReq, action: 'APPROVED_HL', approver: currentUser.name });
-        
-        alert("Persetujuan Berhasil. Perubahan akan aktif otomatis.");
-        setTimeout(async () => {
-          if (req.type === 'ResetPhotoLimit') {
-            await updateUserInSpreadsheet(req.employeeId, { photoChangeCount: 0 });
-            setAllUsers(prev => prev.map(u => u.id === req.employeeId ? { ...u, photoChangeCount: 0 } : u));
-          } else if (req.type === 'RemoveAccess') {
-            await updateUserInSpreadsheet(req.employeeId, { role: 'INACTIVE' });
-            setAllUsers(prev => prev.map(u => u.id === req.employeeId ? { ...u, role: 'INACTIVE' } : u));
-          } else {
-            await updateUserInSpreadsheet(req.employeeId, { role: req.proposedRole });
-            setAllUsers(prev => prev.map(u => u.id === req.employeeId ? { ...u, role: req.proposedRole } : u));
-          }
-        }, 3000);
+        alert("Persetujuan Berhasil.");
+        fetchData(true);
       }
     } else {
       const updatedReq: PromotionRequest = { ...req, status: 'Rejected' };
       setPromotions(prev => prev.map(p => p.id === req.id ? updatedReq : p));
-      await logActivityToSpreadsheet({ ...updatedReq, action: 'REJECTED', approver: currentUser.name });
     }
     setPendingReview(null);
     setIsVerifying(false);
   };
 
-  // Fix: Missing copyToClipboard function used in Settings tab
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).catch(err => {
-      console.error('Gagal menyalin text: ', err);
-    });
-  };
-
   const handlePrint = (singleUserId?: string) => {
     const targets = singleUserId ? new Set([singleUserId]) : selectedPrintUsers;
-    if (targets.size === 0) {
-      alert("Pilih setidaknya satu karyawan untuk dicetak.");
-      return;
-    }
-    
-    // If printing single, temporarily set selectedPrintUsers to that user
-    const originalSelection = new Set(selectedPrintUsers);
+    if (targets.size === 0) { alert("Pilih personel."); return; }
     if (singleUserId) {
+      const originalSelection = new Set(selectedPrintUsers);
       setSelectedPrintUsers(new Set([singleUserId]));
-      setTimeout(() => {
-        window.print();
-        setSelectedPrintUsers(originalSelection);
-      }, 100);
-    } else {
-      window.print();
-    }
+      setTimeout(() => { window.print(); setSelectedPrintUsers(originalSelection); }, 100);
+    } else { window.print(); }
   };
 
   const togglePrintSelection = (id: string) => {
     setSelectedPrintUsers(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
 
-  const selectAllForPrint = () => {
-    const visibleUsers = usersWithAvatars.filter(u => printRoleFilter === 'All Roles' || u.role === printRoleFilter);
-    if (selectedPrintUsers.size === visibleUsers.length) {
-      setSelectedPrintUsers(new Set());
-    } else {
-      setSelectedPrintUsers(new Set(visibleUsers.map(u => u.id)));
-    }
-  };
-
-  const getEffectiveDimensions = useCallback(() => {
+  const effectiveDims = useMemo(() => {
     const { width, height } = selectedPaperPreset;
     return paperOrientation === 'portrait' ? { w: Math.min(width, height), h: Math.max(width, height) } : { w: Math.max(width, height), h: Math.min(width, height) };
   }, [selectedPaperPreset, paperOrientation]);
 
-  const effectiveDims = useMemo(() => getEffectiveDimensions(), [getEffectiveDimensions]);
   const getCardScale = useCallback((pw: number, ph: number) => fitToPaper ? Math.min(ph/127, pw/74) : 1, [fitToPaper]);
 
-  const filteredUsersForPrint = useMemo(() => {
-    return printRoleFilter === 'All Roles' 
-      ? usersWithAvatars 
-      : usersWithAvatars.filter(u => u.role === printRoleFilter);
-  }, [usersWithAvatars, printRoleFilter]);
+  const handleAdjustmentSubmit = async () => {
+    if (!selectedEmpForAdjustment || !adjustmentType || !currentUser) return;
+    setIsSubmittingAdjustment(true);
+    const code = generateUniqueCode('SL');
+    const newReq: PromotionRequest = {
+      id: `adj-${Date.now()}`, employeeId: selectedEmpForAdjustment.id, employeeName: selectedEmpForAdjustment.name,
+      currentRole: selectedEmpForAdjustment.role, proposedRole: adjustmentTargetRole || selectedEmpForAdjustment.role,
+      requestedBy: currentUser.name, status: 'Pending', type: adjustmentType as any, verificationCode: code,
+      timestamp: new Date().toISOString()
+    };
+    setPromotions(prev => [...prev, newReq]);
+    await logActivityToSpreadsheet({ ...newReq, action: 'NEW_ADJUSTMENT_REQUEST' });
+    alert(`Request terkirim. Kode Verifikasi: ${code}`);
+    setSelectedEmpForAdjustment(null); 
+    setIsSubmittingAdjustment(false);
+  };
 
   if (sessionConflict) {
     return (
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border border-red-100 animate-in zoom-in duration-300">
-          <div className="flex flex-col items-center text-center">
-            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center text-red-600 mb-6">
-              <AlertTriangle className="w-12 h-12" />
-            </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-2">Login Ganda Terdeteksi</h2>
-            <p className="text-gray-500 font-medium mb-8">Akun Anda baru saja login di perangkat lain. Untuk alasan keamanan, sesi di perangkat ini telah dihentikan.</p>
-            <button 
-              onClick={handleLogout}
-              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl hover:bg-black transition-all active:scale-95"
-            >
-              Kembali ke Login
-            </button>
-          </div>
+        <div className="w-full max-w-sm bg-white rounded-3xl p-6 text-center shadow-2xl border border-red-100">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center text-red-600 mx-auto mb-4"><AlertTriangle className="w-10 h-10" /></div>
+          <h2 className="text-xl font-black mb-2">Login Ganda</h2>
+          <p className="text-gray-500 text-sm mb-6">Akun Anda aktif di perangkat lain.</p>
+          <button onClick={handleLogout} className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold">Kembali ke Login</button>
         </div>
       </div>
     );
   }
 
   if (!currentUser) {
-    const isSystemLoading = allUsers.length === 0 && isLoading;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-4">
-              <Package className="w-10 h-10" />
-            </div>
-            <h1 className="text-2xl font-black text-gray-900">Tompobulu Hub</h1>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mt-1">Operational Engine v2.5</p>
+        <div className="w-full max-w-sm bg-white rounded-[2rem] shadow-xl p-6 border border-gray-100">
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-3"><Package className="w-8 h-8" /></div>
+            <h1 className="text-xl font-black">Tompobulu Hub</h1>
+            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Operation System v2.5</p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">FMS User ID / ID Ops</label>
-              <input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder="Contoh: 123456" className="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none transition-all font-bold" required />
+          <form onSubmit={handleLogin} className="space-y-3.5">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase ml-1">FMS / Ops ID</label>
+              <input type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder="ID" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all font-bold text-sm" required />
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Password</label>
-              <input type="password" value={loginPwd} onChange={(e) => setLoginPwd(e.target.value)} placeholder="••••••••" className="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none transition-all font-bold" required />
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-gray-400 uppercase ml-1">Password</label>
+              <input type="password" value={loginPwd} onChange={(e) => setLoginPwd(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none transition-all font-bold text-sm" required />
             </div>
-            {loginError && (
-              <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3 animate-in shake duration-300">
-                <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-                <p className="text-xs font-bold text-red-600 leading-tight whitespace-pre-wrap">{loginError}</p>
-              </div>
-            )}
-            <button 
-              type="submit" 
-              disabled={isLoggingIn || isSystemLoading} 
-              className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-lg transition-all flex items-center justify-center gap-3 ${
-                isSystemLoading 
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 active:scale-95'
-              }`}
-            >
-              {isLoggingIn ? <Loader2 className="w-5 h-5 animate-spin" /> : isSystemLoading ? 'Syncing Hub...' : 'Login to System'}
+            {loginError && <div className="p-3 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg border border-red-100 leading-tight">{loginError}</div>}
+            <button type="submit" disabled={isLoggingIn || (allUsers.length === 0 && isLoading)} className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-black uppercase text-xs shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2">
+              {isLoggingIn ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Login System'}
             </button>
           </form>
-          <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
-             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">© 2024 Tompobulu Hub</p>
-             <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
-               <DeviceIcon className="w-3 h-3 text-gray-400" />
-               <span className="text-[8px] font-mono text-gray-400">{getDeviceId()}</span>
-             </div>
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <Layout 
-      user={currentUser} 
-      onLogout={handleLogout} 
-      onSync={() => fetchData()} 
-      activeMenu={activeMenu} 
-      setActiveMenu={setActiveMenu} 
-      onAvatarChange={handleAvatarChange} 
-      hasChangedAvatar={changedAvatarIds.has(currentUser.id)}
-    >
-      <div className="flex items-center gap-4 mb-6 -mt-2 no-print">
-         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sync Status: Online</span>
-            <div className="h-4 w-[1px] bg-gray-100 mx-1"></div>
-            <span className="text-[10px] font-bold text-gray-400">Last update: {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-         </div>
-      </div>
-
+    <Layout user={currentUser} onLogout={handleLogout} onSync={() => fetchData()} activeMenu={activeMenu} setActiveMenu={setActiveMenu} onAvatarChange={handleAvatarChange} hasChangedAvatar={changedAvatarIds.has(currentUser.id)}>
+      
       <style>{`
-        @media print { 
-          body * { visibility: hidden; } 
-          #printable-area, #printable-area * { visibility: visible; } 
-          #printable-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; } 
-          .no-print { display: none !important; } 
-          @page { size: ${effectiveDims.w}mm ${effectiveDims.h}mm; margin: 0; } 
-          .print-card-container { 
-            width: ${effectiveDims.w}mm; 
-            height: ${effectiveDims.h}mm; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            overflow: hidden; 
-            background: white; 
-            page-break-after: always; 
-          } 
-        }
+        @media print { body * { visibility: hidden; } #printable-area, #printable-area * { visibility: visible; } #printable-area { position: absolute; left: 0; top: 0; width: 100%; background: white !important; } .no-print { display: none !important; } @page { size: ${effectiveDims.w}mm ${effectiveDims.h}mm; margin: 0; } .print-card-container { width: ${effectiveDims.w}mm; height: ${effectiveDims.h}mm; display: flex; align-items: center; justify-content: center; overflow: hidden; background: white; page-break-after: always; } }
       `}</style>
 
       <div id="printable-area" className="hidden print:block bg-white">
@@ -509,222 +382,276 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      {isLoading ? (<div className="h-full flex flex-col items-center justify-center gap-4 py-12"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div><p className="text-gray-500 font-medium tracking-widest uppercase text-xs">Syncing Hub Engine...</p></div>) : (
-        <>
+      {isLoading ? (
+        <div className="h-full flex flex-col items-center justify-center gap-2 py-10">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Syncing Engine...</p>
+        </div>
+      ) : (
+        <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
           {activeMenu === 'dashboard' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex flex-col sm:flex-row items-center justify-between gap-4"><div><h2 className="text-2xl font-black text-gray-900 tracking-tight">Operational Dashboard</h2><p className="text-sm text-gray-500 font-medium">Monitoring Real-time Hub Data</p></div><div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100"><Activity className="w-4 h-4 text-blue-600 animate-pulse" /><span className="text-xs font-bold text-blue-700 uppercase tracking-widest">Live Sync Active</span></div></div>
-               <section className="grid grid-cols-1 md:grid-cols-3 gap-6">{dashboardStats.map((hub, idx) => (<div key={idx} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-xl transition-all"><div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div><div className="relative z-10"><div className="flex items-center justify-between mb-6"><div className={`p-3 rounded-2xl ${idx === 0 ? 'bg-blue-600' : idx === 1 ? 'bg-indigo-600' : 'bg-purple-600'} text-white shadow-lg`}><TrendingUp className="w-5 h-5" /></div><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{hub.name}</span></div><div className="space-y-1 mb-6"><h3 className="text-4xl font-black text-gray-900 tracking-tighter">{hub.totalPackages}</h3><p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Paket Harian</p></div><div className="space-y-4"><div className="flex items-center justify-between text-xs font-bold"><span className="text-gray-500">Scan Progress</span><span className="text-blue-600 font-black">{hub.progress}%</span></div><div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${idx === 0 ? 'bg-blue-600' : idx === 1 ? 'bg-indigo-600' : 'bg-purple-600'}`} style={{ width: `${hub.progress}%` }}></div></div></div></div></div>))} </section>
-            </div>
-          )}
-
-          {activeMenu === 'tasks' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div><h2 className="text-2xl font-bold text-gray-900">Courier Tasks</h2><p className="text-gray-500 text-sm">{checkIsCourier(currentUser.role as string) ? 'Tugas pengantaran harian Anda' : 'Real-time assignment tracking'}</p></div>
-                  {!checkIsCourier(currentUser.role as string) && (
-                     <div className="flex items-center gap-3">
-                        <div className="relative">
-                           <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                           <select value={taskHubFilter} onChange={(e) => setTaskHubFilter(e.target.value)} className="pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase shadow-sm outline-none appearance-none min-w-[160px]">
-                              {['All Hubs', ...new Set(tasks.map(t => t.hub))].map(hub => <option key={hub} value={hub}>{hub}</option>)}
-                           </select>
-                        </div>
+            <div className="space-y-4">
+               <div className="flex items-center justify-between"><h2 className="text-base sm:text-xl font-black">Dashboard</h2><div className="flex items-center gap-1.5 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"><Activity className="w-3 h-3 text-blue-600" /><span className="text-[8px] font-black text-blue-700 uppercase">Live</span></div></div>
+               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                 {dashboardStats.map((hub, i) => (
+                   <div key={i} className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm">
+                     <div className="flex justify-between items-start mb-2.5">
+                       <div className="p-1.5 bg-gray-50 rounded-lg text-blue-600"><TrendingUp className="w-3.5 h-3.5" /></div>
+                       <span className="text-[9px] font-black text-gray-400 uppercase">{hub.name}</span>
                      </div>
-                  )}
+                     <div className="mb-3"><h3 className="text-xl font-black">{hub.totalPackages}</h3><p className="text-[8px] font-bold text-gray-400 uppercase">Paket</p></div>
+                     <div className="w-full h-1.5 bg-gray-50 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${hub.progress}%` }}></div></div>
+                   </div>
+                 ))}
                </div>
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{filteredTasks.map((tG, idx) => { const rC = ROLE_COLORS[tG.courierRole as Role] || 'bg-white border-gray-100'; return (<div key={idx} onClick={() => setSelectedTaskGroup(tG)} className={`p-5 rounded-[2rem] border-2 transition-all cursor-pointer hover:shadow-xl active:scale-[0.98] ${rC.replace('text-', 'border-')}`}><div className="mb-4 flex justify-between items-start"><div><h4 className="text-xl font-black text-gray-900 leading-tight">{tG.courierName}</h4><span className="text-[10px] text-gray-400 font-mono tracking-widest">FMS: {tG.courierId}</span></div><span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${rC}`}>{tG.courierRole}</span></div><div className="p-4 rounded-2xl mb-4 bg-gray-50 bg-opacity-40 flex justify-between items-center"><div><span className="text-3xl font-black text-gray-900">{tG.totalPackages}</span><p className="text-[9px] uppercase font-black text-gray-500 tracking-widest">Total Paket</p></div><Package className="w-8 h-8 text-gray-300" /></div><div className="flex justify-between items-center pt-2 border-t border-gray-50"><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{tG.hub}</span><div className="text-blue-600 font-black text-xs flex items-center gap-1">Detail <ChevronRight className="w-4 h-4" /></div></div></div>); })}</div>
-               {selectedTaskGroup && (<QRCodeModal taskGroup={selectedTaskGroup} onClose={() => setSelectedTaskGroup(null)} scannedTaskIds={scannedTaskIds} onToggleScan={(id) => { const n = new Set(scannedTaskIds); if (n.has(id)) n.delete(id); else n.add(id); setScannedTaskIds(n); updateTaskStatusInSpreadsheet(id, n.has(id) ? 'Scanned' : 'Unscanned'); }} />)}
-            </div>
-          )}
-
-          {activeMenu === 'attendance' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4"><div><h2 className="text-2xl font-bold text-gray-900">Daily Attendance</h2><p className="text-gray-500 text-sm">Staff Attendance Monitoring</p></div><div className="flex gap-2">{['All', 'Hadir', 'Off'].map(f => (<button key={f} onClick={() => setAttendanceFilter(f)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${attendanceFilter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 border border-gray-100'}`}>{f}</button>))}</div></div>
-               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-x-auto no-scrollbar"><table className="w-full text-left min-w-[800px]"><thead><tr className="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th className="px-6 py-5 whitespace-nowrap">Ops ID</th><th className="px-6 py-5 whitespace-nowrap">Nama</th><th className="px-6 py-5 whitespace-nowrap">Jabatan</th><th className="px-6 py-5 whitespace-nowrap">Status</th><th className="px-6 py-5 whitespace-nowrap">Keterangan</th></tr></thead><tbody className="divide-y divide-gray-50">{filteredAttendance.map((att, i) => (<tr key={i} className="hover:bg-gray-50/50 transition-colors"><td className="px-6 py-4 font-mono text-xs text-gray-400 whitespace-nowrap">{att.opsId}</td><td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">{att.name}</td><td className="px-6 py-4 text-xs font-bold text-gray-500 whitespace-nowrap">{att.role}</td><td className="px-6 py-4 whitespace-nowrap"><span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${att.status === 'Hadir' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'}`}>{att.status}</span></td><td className="px-6 py-4 text-xs font-bold text-gray-400 whitespace-nowrap">{att.remarks || '-'}</td></tr>))}</tbody></table></div>
             </div>
           )}
 
           {activeMenu === 'employees' && (
-             <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-gray-100 pb-8"><div><h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Personnel Directory</h2><p className="text-xs text-gray-400 font-bold tracking-widest mt-1">Total {filteredEmployees.length} Personel Terdaftar</p></div><div className="flex flex-col sm:flex-row gap-4"><select value={empStationFilter} onChange={(e) => setEmpStationFilter(e.target.value)} className="px-4 py-3 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm">{uniqueStations.map(s => <option key={s} value={s}>{s}</option>)}</select><select value={empRoleFilter} onChange={(e) => setEmpRoleFilter(e.target.value)} className="px-4 py-3 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm">{uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="text" value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} placeholder="CARI..." className="px-4 py-3 bg-white border border-gray-100 rounded-xl text-xs font-black uppercase shadow-sm w-full sm:w-64" /></div></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">{filteredEmployees.map(u => (<EmployeeCard key={u.id} employee={u} isCurrentUser={currentUser?.id === u.id} currentUserRole={currentUser?.role} hasChangedAvatar={changedAvatarIds.has(u.id)} onAvatarChange={handleAvatarChange} />))}</div>
+            <div className="space-y-6">
+               <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                  <h2 className="text-base sm:text-xl font-black">Personel Hub</h2>
+                  <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                     <div className="relative flex-1 md:w-64 min-w-[200px]">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="Cari Nama / ID..." 
+                          value={empSearch}
+                          onChange={(e) => setEmpSearch(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-bold outline-none shadow-sm focus:border-blue-500" 
+                        />
+                     </div>
+                     <select 
+                       value={empStationFilter} 
+                       onChange={(e) => setEmpStationFilter(e.target.value)}
+                       className="px-3 py-2 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm"
+                     >
+                        {uniqueStations.map(s => <option key={s} value={s}>{s}</option>)}
+                     </select>
+                     <select 
+                       value={empRoleFilter} 
+                       onChange={(e) => setEmpRoleFilter(e.target.value)}
+                       className="px-3 py-2 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm"
+                     >
+                        {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                     </select>
+                  </div>
+               </div>
+
+               {filteredEmployees.length > 0 ? (
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 place-items-center">
+                    {filteredEmployees.map(u => (
+                      <EmployeeCard 
+                        key={u.id} 
+                        employee={u} 
+                        isCurrentUser={currentUser?.id === u.id} 
+                        currentUserRole={currentUser?.role} 
+                        hasChangedAvatar={changedAvatarIds.has(u.id)}
+                        onAvatarChange={handleAvatarChange}
+                        theme={ID_CARD_THEMES[0]}
+                      />
+                    ))}
+                 </div>
+               ) : (
+                 <div className="py-20 flex flex-col items-center justify-center text-gray-400">
+                    <UserX className="w-12 h-12 mb-3 opacity-20" />
+                    <p className="text-sm font-black uppercase tracking-widest">Tidak ada personel ditemukan</p>
+                 </div>
+               )}
+            </div>
+          )}
+
+          {activeMenu === 'tasks' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-2 justify-between">
+                <h2 className="text-base font-black">Assign Task</h2>
+                {!checkIsCourier(currentUser.role as string) && (
+                  <select value={taskHubFilter} onChange={(e) => setTaskHubFilter(e.target.value)} className="px-3 py-1.5 bg-white border border-gray-100 rounded-lg text-[10px] font-black uppercase outline-none shadow-sm">{['All Hubs', ...new Set(tasks.map(t => t.hub))].map(h => <option key={h} value={h}>{h}</option>)}</select>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {filteredTasks.map((t, idx) => {
+                  const deliveryDate = t.tasks && t.tasks.length > 0 ? t.tasks[0].deliveryDate : 'N/A';
+                  return (
+                    <div key={idx} onClick={() => setSelectedTaskGroup(t)} className="p-3.5 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+                      <div className="flex justify-between mb-2">
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[11px] font-black truncate">{t.courierName}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <Calendar className="w-2.5 h-2.5 text-blue-500" />
+                            <span className="text-[8px] font-black text-gray-400 uppercase">{deliveryDate}</span>
+                          </div>
+                        </div>
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded h-fit text-[7px] font-black uppercase ${ROLE_COLORS[t.courierRole as Role] || 'bg-gray-100'}`}>{t.courierRole}</span>
+                      </div>
+                      <div className="flex items-end justify-between pt-2 border-t border-gray-50">
+                        <div>
+                          <span className="text-lg font-black">{t.totalPackages}</span>
+                          <p className="text-[8px] font-bold text-gray-400 uppercase">Paket</p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedTaskGroup && <QRCodeModal taskGroup={selectedTaskGroup} onClose={() => setSelectedTaskGroup(null)} scannedTaskIds={scannedTaskIds} onToggleScan={(id) => { const n = new Set(scannedTaskIds); n.has(id) ? n.delete(id) : n.add(id); setScannedTaskIds(n); updateTaskStatusInSpreadsheet(id, n.has(id) ? 'Scanned' : 'Unscanned'); }} />}
+            </div>
+          )}
+
+          {activeMenu === 'attendance' && (
+            <div className="space-y-3">
+               <div className="flex justify-between items-center"><h2 className="text-base font-black">Attendance</h2><div className="flex gap-1">{['All', 'Hadir', 'Off'].map(f => <button key={f} onClick={() => setAttendanceFilter(f)} className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${attendanceFilter === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 border border-gray-100'}`}>{f}</button>)}</div></div>
+               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[8px] uppercase font-black text-gray-400 tracking-widest"><tr className="border-b border-gray-50"><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Ket</th></tr></thead><tbody className="divide-y divide-gray-50">{filteredAttendance.map((a, i) => (<tr key={i} className="text-[10px]"><td className="px-4 py-2.5 font-bold">{a.name}</td><td className="px-4 py-2.5"><span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${a.status === 'Hadir' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>{a.status}</span></td><td className="px-4 py-2.5 text-gray-400 truncate max-w-[80px]">{a.remarks || '-'}</td></tr>))}</tbody></table></div>
+            </div>
+          )}
+
+          {activeMenu === 'user-management' && currentUser?.role === Role.ADMIN_TRACER && (
+             <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                   <div className="flex-1 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                        <h3 className="text-xs font-black uppercase flex items-center gap-2"><SlidersHorizontal className="w-3.5 h-3.5" /> Filter User</h3>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
+                          <input type="text" placeholder="Cari Nama / ID..." value={empSearch} onChange={(e) => setEmpSearch(e.target.value)} className="w-full pl-9 pr-3 py-2.5 bg-gray-50 rounded-xl outline-none text-[11px] font-bold border-2 border-transparent focus:border-blue-100 transition-all" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <select value={empStationFilter} onChange={(e) => setEmpStationFilter(e.target.value)} className="w-full px-3 py-2 bg-gray-50 rounded-lg text-[9px] font-black uppercase outline-none">{uniqueStations.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                          <select value={empRoleFilter} onChange={(e) => setEmpRoleFilter(e.target.value)} className="w-full px-3 py-2 bg-gray-50 rounded-lg text-[9px] font-black uppercase outline-none">{uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                        </div>
+                      </div>
+                      <div className="max-h-[400px] overflow-y-auto no-scrollbar space-y-1.5">
+                         {filteredEmployees.map(u => (
+                            <div key={u.id} className={`p-3 rounded-xl border transition-all flex items-center justify-between group cursor-pointer ${selectedEmpForAdjustment?.id === u.id ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-gray-50 hover:border-blue-200'}`} onClick={() => setSelectedEmpForAdjustment(u)}>
+                               <div className="leading-tight">
+                                  <p className="text-[10px] font-black truncate max-w-[140px]">{u.name}</p>
+                                  <p className={`text-[8px] uppercase font-mono mt-0.5 ${selectedEmpForAdjustment?.id === u.id ? 'text-white/70' : 'text-gray-400'}`}>{u.id} • {u.station}</p>
+                               </div>
+                               <ChevronRight className={`w-3.5 h-3.5 ${selectedEmpForAdjustment?.id === u.id ? 'text-white' : 'text-gray-200 group-hover:text-blue-400'}`} />
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                   
+                   <div className="flex-1">
+                     {selectedEmpForAdjustment ? (
+                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-5 animate-in slide-in-from-right-2">
+                           <div className="flex gap-3 items-center p-3 bg-blue-50 rounded-2xl border border-blue-100">
+                              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-600 shadow-sm overflow-hidden">
+                                {selectedEmpForAdjustment.avatarUrl ? <img src={selectedEmpForAdjustment.avatarUrl} className="w-full h-full object-cover" /> : <UserCog className="w-5 h-5" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-black truncate">{selectedEmpForAdjustment.name}</p>
+                                <p className="text-[8px] font-black uppercase text-blue-600/60">{selectedEmpForAdjustment.role}</p>
+                              </div>
+                           </div>
+                           
+                           <div className="space-y-3">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Pilih Aksi Perubahan</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                 {['Promote', 'Demote', 'ChangeAccess', 'DeleteAccount'].map(type => (
+                                    <button key={type} onClick={() => setAdjustmentType(type)} className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${adjustmentType === type ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-white hover:border-blue-100'}`}>{type}</button>
+                                 ))}
+                              </div>
+                           </div>
+
+                           {adjustmentType && (
+                             <div className="space-y-3 animate-in fade-in">
+                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Target Jabatan Baru</label>
+                               <select value={adjustmentTargetRole} onChange={(e) => setAdjustmentTargetRole(e.target.value)} className="w-full px-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none border-2 border-transparent focus:border-blue-500">
+                                  <option value="">Pilih Jabatan...</option>
+                                  {uniqueRoles.filter(r => r !== 'All Roles').map(r => <option key={r} value={r}>{r}</option>)}
+                               </select>
+                             </div>
+                           )}
+
+                           <button 
+                             onClick={handleAdjustmentSubmit} 
+                             disabled={isSubmittingAdjustment || !adjustmentType || !adjustmentTargetRole} 
+                             className="w-full py-4 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-xl shadow-gray-200 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                           >
+                             {isSubmittingAdjustment ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Proses Pengajuan Perubahan'}
+                           </button>
+                        </div>
+                     ) : (
+                       <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl h-full flex flex-col items-center justify-center p-10 text-center">
+                          <UserCog className="w-10 h-10 text-gray-200 mb-2" />
+                          <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Pilih user dari daftar untuk mulai kustomisasi akses atau jabatan.</p>
+                       </div>
+                     )}
+                   </div>
+                </div>
              </div>
           )}
 
           {activeMenu === 'settings' && (
-            <div className="max-w-5xl mx-auto space-y-10 py-4 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              
-              {/* Approval Center */}
-              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6 relative overflow-hidden">
-                <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center"><Key className="w-6 h-6 text-indigo-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Approval Center</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Submit Kode Unik Verifikasi</p></div></div>
-                {pendingReview ? (
-                   <div className="p-6 bg-indigo-50 rounded-[2rem] border-2 border-indigo-200 animate-in zoom-in duration-300">
-                      <div className="flex justify-between items-start mb-6">
-                         <div><span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Meninjau Permintaan</span><h4 className="text-xl font-black text-indigo-900 mt-1">{pendingReview.employeeName}</h4><p className="text-[10px] font-bold text-indigo-600 uppercase mt-1">ID: {pendingReview.employeeId} • TIPE: {pendingReview.type}</p></div>
-                      </div>
-                      <div className="flex gap-3">
-                         <button disabled={isVerifying} onClick={() => processReview(false)} className="flex-1 bg-white text-red-600 py-4 rounded-2xl font-black uppercase text-xs border border-red-100">Tolak Request</button>
-                         <button disabled={isVerifying} onClick={() => processReview(true)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg">{isVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Setujui & Proses</button>
-                      </div>
-                   </div>
-                ) : (
-                  <div className="flex flex-col md:flex-row items-end gap-4">
-                    <div className="flex-1 space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Input Kode Unik</label><div className="relative"><Hash className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" /><input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="SL-AB12CD" className="w-full pl-12 pr-6 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none uppercase font-black text-sm" /></div></div>
-                    <button onClick={handleCodeVerification} className="h-[60px] px-8 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100">Cek Kode</button>
+            <div className="max-w-2xl mx-auto space-y-6">
+               <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 border-b border-gray-50 pb-3"><Key className="w-5 h-5 text-indigo-600" /><h3 className="text-sm font-black uppercase">Approval Center</h3></div>
+                  {pendingReview ? (
+                    <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 space-y-4 animate-in zoom-in-95">
+                       <div className="flex justify-between items-start">
+                         <div>
+                            <p className="text-[11px] font-black text-indigo-900 uppercase">{pendingReview.employeeName}</p>
+                            <p className="text-[8px] font-bold text-indigo-600/60 uppercase">{pendingReview.type}: {pendingReview.currentRole} ➔ {pendingReview.proposedRole}</p>
+                         </div>
+                         <span className="px-2 py-0.5 bg-indigo-600 text-white text-[7px] font-black rounded uppercase">Reviewing</span>
+                       </div>
+                       <div className="flex gap-2">
+                         <button onClick={() => processReview(true)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100">Approve</button>
+                         <button onClick={() => processReview(false)} className="flex-1 py-3 bg-white text-red-600 border border-red-100 rounded-xl text-[10px] font-black uppercase">Reject</button>
+                       </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input type="text" value={verificationInput} onChange={(e) => setVerificationInput(e.target.value)} placeholder="MASUKKAN KODE VERIFIKASI..." className="flex-1 px-4 py-3 bg-gray-50 rounded-xl outline-none text-[10px] font-bold border-2 border-transparent focus:border-indigo-500 uppercase" />
+                      <button onClick={() => { if(!verificationInput.trim()) return; const r = promotions.find(p => p.verificationCode === verificationInput.trim().toUpperCase() || p.nextVerificationCode === verificationInput.trim().toUpperCase()); if(r) setPendingReview(r); else alert("Kode tidak ditemukan."); setVerificationInput(""); }} className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100 active:scale-95 transition-all">Check</button>
+                    </div>
+                  )}
+               </section>
+
+               <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-5">
+                  <div className="flex justify-between items-center border-b border-gray-50 pb-3"><div className="flex items-center gap-2"><Printer className="w-5 h-5 text-blue-600" /><h3 className="text-sm font-black uppercase">ID Cards Printing</h3></div><button onClick={() => setShowPrintSettings(!showPrintSettings)} className="p-2 rounded-xl bg-gray-50 text-gray-400 hover:text-blue-600 transition-colors"><Settings2 className="w-5 h-5" /></button></div>
+                  
+                  {showPrintSettings && (
+                    <div className="p-4 bg-gray-50 rounded-2xl space-y-4 animate-in slide-in-from-top-2">
+                       <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Ukuran Kertas</label>
+                             <select onChange={(e) => setSelectedPaperPreset(PAPER_PRESETS.find(p => p.id === e.target.value)!)} className="w-full px-3 py-2 bg-white rounded-lg text-[10px] font-bold outline-none border border-gray-200">{PAPER_PRESETS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Orientasi</label>
+                             <select onChange={(e) => setPaperOrientation(e.target.value as any)} className="w-full px-3 py-2 bg-white rounded-lg text-[10px] font-bold outline-none border border-gray-200"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+                          </div>
+                       </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-4">
+                     <select value={printRoleFilter} onChange={(e) => {setPrintRoleFilter(e.target.value); setSelectedPrintUsers(new Set());}} className="w-full px-4 py-3 bg-gray-50 rounded-xl text-[10px] font-black uppercase outline-none border-2 border-transparent focus:border-blue-500">{uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                     
+                     <div className="max-h-[300px] overflow-y-auto no-scrollbar space-y-2 p-1">
+                        {usersWithAvatars.filter(u => printRoleFilter === 'All Roles' || u.role === printRoleFilter).map(u => (
+                           <div key={u.id} className={`p-3 rounded-2xl border flex items-center justify-between transition-all ${selectedPrintUsers.has(u.id) ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-100' : 'bg-white border-gray-50 hover:border-gray-200'}`}>
+                              <div className="flex items-center gap-3 flex-1 cursor-pointer" onClick={() => togglePrintSelection(u.id)}>
+                                 <div className="w-8 h-8 rounded-lg bg-gray-100 overflow-hidden shrink-0">{u.avatarUrl ? <img src={u.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-2 text-gray-300" />}</div>
+                                 <div className="min-w-0"><p className="text-[10px] font-black truncate">{u.name}</p><p className="text-[8px] font-bold text-gray-400 uppercase">{u.id}</p></div>
+                              </div>
+                              <button onClick={() => handlePrint(u.id)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-colors"><Printer className="w-4 h-4" /></button>
+                           </div>
+                        ))}
+                     </div>
+                     <button onClick={() => handlePrint()} disabled={selectedPrintUsers.size === 0} className="w-full py-4 bg-gray-900 text-white rounded-2xl text-[11px] font-black uppercase shadow-xl active:scale-95 transition-all disabled:opacity-50">Cetak Batch ({selectedPrintUsers.size} Personel)</button>
                   </div>
-                )}
-              </section>
-
-              {/* BATCH PRINT SECTION */}
-              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-8 no-print">
-                 <div className="flex items-center justify-between border-b border-gray-50 pb-6">
-                    <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center"><Printer className="w-6 h-6 text-blue-600" /></div>
-                       <div><h3 className="text-lg font-black text-gray-900 leading-none">Cetak Kartu Karyawan</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Percetakan ID Card (Batch / Individual)</p></div>
-                    </div>
-                    <button 
-                      onClick={() => setShowPrintSettings(!showPrintSettings)} 
-                      className={`p-3 rounded-xl transition-all flex items-center gap-2 text-xs font-black uppercase ${showPrintSettings ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-400 hover:text-blue-600'}`}
-                    >
-                      <Settings2 className="w-5 h-5" /> 
-                      <span className="hidden sm:inline">Settings</span>
-                    </button>
-                 </div>
-
-                 {showPrintSettings && (
-                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 animate-in slide-in-from-top-4 duration-300 grid grid-cols-1 md:grid-cols-3 gap-6">
-                       <div className="space-y-4">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-600"/> Paper Size</label>
-                          <div className="grid grid-cols-1 gap-2">
-                             {PAPER_PRESETS.map((paper) => (
-                               <button 
-                                 key={paper.id} 
-                                 onClick={() => setSelectedPaperPreset(paper)} 
-                                 className={`p-3 rounded-xl border-2 text-left transition-all ${selectedPaperPreset.id === paper.id ? 'border-blue-600 bg-white' : 'border-transparent bg-white/50 hover:bg-white'}`}
-                               >
-                                 <p className="text-[11px] font-black text-gray-900 leading-none mb-1">{paper.name}</p>
-                                 <p className="text-[9px] font-bold text-gray-400 uppercase">{paper.width}x{paper.height}mm</p>
-                               </button>
-                             ))}
-                          </div>
-                       </div>
-                       <div className="space-y-4">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Maximize className="w-3.5 h-3.5 text-blue-600"/> Orientation</label>
-                          <div className="grid grid-cols-2 gap-2">
-                             <button onClick={() => setPaperOrientation('portrait')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'portrait' ? 'border-blue-600 bg-white text-blue-700' : 'border-transparent bg-white/50 text-gray-400'}`}><Smartphone className="w-6 h-6" /><span className="text-[10px] font-black uppercase">Portrait</span></button>
-                             <button onClick={() => setPaperOrientation('landscape')} className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all ${paperOrientation === 'landscape' ? 'border-blue-600 bg-white text-blue-700' : 'border-transparent bg-white/50 text-gray-400'}`}><Tablet className="w-6 h-6 rotate-90" /><span className="text-[10px] font-black uppercase">Landscape</span></button>
-                          </div>
-                          <div className="pt-4 flex items-center gap-3">
-                             <button onClick={() => setFitToPaper(!fitToPaper)} className={`flex-1 py-3 rounded-xl border-2 text-[10px] font-black uppercase transition-all ${fitToPaper ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-400 border-gray-100'}`}>
-                                {fitToPaper ? 'Fit to Paper ON' : 'Fit to Paper OFF'}
-                             </button>
-                          </div>
-                       </div>
-                       <div className="space-y-4">
-                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-1.5"><Palette className="w-3.5 h-3.5 text-blue-600"/> Visual Theme</label>
-                          <div className="grid grid-cols-5 gap-2">
-                            {ID_CARD_THEMES.map((theme) => (
-                              <button 
-                                key={theme.id} 
-                                onClick={() => setSelectedPrintTheme(theme)} 
-                                className={`h-10 rounded-lg border-2 transition-all flex items-center justify-center ${selectedPrintTheme.id === theme.id ? 'border-blue-500 ring-2 ring-blue-100' : 'border-white'}`} 
-                                style={{ backgroundColor: theme.primary }}
-                                title={theme.name}
-                              >
-                                {selectedPrintTheme.id === theme.id && <CheckCircle2 className="w-4 h-4 text-white" />}
-                              </button>
-                            ))}
-                          </div>
-                       </div>
-                    </div>
-                 )}
-
-                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    <div className="lg:col-span-7 space-y-6">
-                       <div className="flex flex-col sm:flex-row gap-4 items-end">
-                          <div className="flex-1 space-y-2">
-                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Filter by Role</label>
-                             <select 
-                               value={printRoleFilter} 
-                               onChange={(e) => { setPrintRoleFilter(e.target.value); setSelectedPrintUsers(new Set()); }} 
-                               className="w-full px-5 py-4 bg-gray-50 rounded-2xl border-none font-bold text-sm outline-none shadow-sm appearance-none"
-                             >
-                               {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
-                             </select>
-                          </div>
-                          <button onClick={selectAllForPrint} className="px-6 py-4 bg-white border-2 border-gray-100 text-gray-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all h-[58px]">
-                             {selectedPrintUsers.size === filteredUsersForPrint.length ? 'Batal Semua' : 'Pilih Semua'}
-                          </button>
-                       </div>
-
-                       <div className="bg-gray-50 rounded-[2.5rem] border border-gray-100 p-4 max-h-[400px] overflow-y-auto no-scrollbar space-y-2">
-                          {filteredUsersForPrint.length === 0 ? (
-                            <div className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">No employees found in this role</div>
-                          ) : filteredUsersForPrint.map(u => (
-                             <div key={u.id} className={`group flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${selectedPrintUsers.has(u.id) ? 'bg-blue-600 border-blue-600' : 'bg-white border-transparent hover:border-blue-100'}`}>
-                                <button onClick={() => togglePrintSelection(u.id)} className="flex items-center gap-3 flex-1 text-left">
-                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs ${selectedPrintUsers.has(u.id) ? 'bg-white text-blue-600' : 'bg-blue-50 text-blue-500'}`}>
-                                      {selectedPrintUsers.has(u.id) ? <CheckSquare className="w-5 h-5" /> : u.name.charAt(0)}
-                                   </div>
-                                   <div className="leading-tight">
-                                      <p className={`text-xs font-black ${selectedPrintUsers.has(u.id) ? 'text-white' : 'text-gray-900'}`}>{u.name}</p>
-                                      <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedPrintUsers.has(u.id) ? 'text-white/70' : 'text-gray-400'}`}>{u.id} • {u.role}</p>
-                                   </div>
-                                </button>
-                                <button 
-                                  onClick={() => handlePrint(u.id)} 
-                                  className={`p-3 rounded-xl transition-all ${selectedPrintUsers.has(u.id) ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-50 text-gray-400 hover:text-blue-600'}`}
-                                  title="Print One by One"
-                                >
-                                  <Printer className="w-4 h-4" />
-                                </button>
-                             </div>
-                          ))}
-                       </div>
-
-                       <button 
-                         onClick={() => handlePrint()} 
-                         disabled={selectedPrintUsers.size === 0}
-                         className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${selectedPrintUsers.size > 0 ? 'bg-gray-900 text-white hover:bg-black active:scale-95' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                       >
-                          <Printer className="w-5 h-5" /> Cetak {selectedPrintUsers.size} Kartu (Batch)
-                       </button>
-                    </div>
-
-                    <div className="lg:col-span-5">
-                       <div className="space-y-4">
-                          <div className="flex items-center gap-2 px-1"><Eye className="w-4 h-4 text-blue-600" /><h4 className="text-xs font-black text-gray-900 uppercase tracking-widest">Live Preview</h4></div>
-                          <div className="bg-gray-200 p-8 rounded-[3rem] border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden min-h-[450px] relative">
-                             {selectedPrintUsers.size > 0 ? (
-                                <div 
-                                  className="bg-white shadow-2xl relative flex items-center justify-center transition-all duration-500 border border-gray-300" 
-                                  style={{ width: `${effectiveDims.w * 3}px`, height: `${effectiveDims.h * 3}px` }}
-                                >
-                                   <div style={{ transform: `scale(${getCardScale(effectiveDims.w, effectiveDims.h) * 0.65})`, transformOrigin: 'center' }}>
-                                      <EmployeeCard employee={usersWithAvatars.find(u => selectedPrintUsers.has(u.id))!} isCurrentUser={false} currentUserRole={currentUser.role} theme={selectedPrintTheme} hasChangedAvatar={false} orientation={paperOrientation} />
-                                   </div>
-                                </div>
-                             ) : (
-                                <div className="text-center p-8"><Printer className="w-12 h-12 text-gray-300 mx-auto mb-4" /><p className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] leading-loose">Pilih personel untuk melihat<br/>pratinjau cetak otomatis</p></div>
-                             )}
-                          </div>
-                          {selectedPrintUsers.size > 1 && <p className="text-[9px] font-black text-blue-600 uppercase text-center tracking-[0.2em]">+ {selectedPrintUsers.size - 1} Personnel in print queue</p>}
-                       </div>
-                    </div>
-                 </div>
-              </section>
-
-              {/* History & Monitoring Request */}
-              <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-gray-50 pb-6"><div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center"><History className="w-6 h-6 text-orange-600" /></div><div><h3 className="text-lg font-black text-gray-900 leading-none">Monitoring Request</h3><p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Pantau Progres & Kode Verifikasi</p></div></div>
-                <div className="overflow-x-auto no-scrollbar">
-                  <table className="w-full text-left min-w-[800px]"><thead className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50"><tr className="border-b border-gray-50"><th className="py-4 px-2 whitespace-nowrap">Timestamp</th><th className="py-4 px-2 whitespace-nowrap">Karyawan</th><th className="py-4 px-2 whitespace-nowrap">Tipe</th><th className="py-4 px-2 whitespace-nowrap">Status</th><th className="py-4 px-2 whitespace-nowrap">Kode SL</th><th className="py-4 px-2 whitespace-nowrap">Kode HL</th></tr></thead><tbody className="divide-y divide-gray-50">{promotions.slice().reverse().map((req) => (<tr key={req.id} className="text-xs hover:bg-gray-50/50 transition-colors"><td className="py-4 px-2 font-mono text-gray-400 whitespace-nowrap">{new Date(req.timestamp).toLocaleDateString()}</td><td className="py-4 px-2 whitespace-nowrap"><div className="font-bold text-gray-900">{req.employeeName}</div><div className="text-[9px] text-gray-400">{req.employeeId}</div></td><td className="py-4 px-2 whitespace-nowrap"><span className="px-2 py-1 bg-gray-100 rounded-md text-[9px] font-black uppercase">{req.type}</span></td><td className="py-4 px-2 whitespace-nowrap"><span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${req.status === 'Approved' ? 'bg-green-100 text-green-700' : req.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{req.status}</span></td><td className="py-4 px-2 whitespace-nowrap">{req.verificationCode && <div className="flex items-center gap-2"><span className="font-mono font-bold text-indigo-600">{req.verificationCode}</span><button onClick={() => copyToClipboard(req.verificationCode!)} className="p-1 hover:bg-gray-100 rounded transition-colors hover:text-blue-600"><Copy className="w-3.5 h-3.5" /></button></div>}</td><td className="py-4 px-2 whitespace-nowrap">{req.nextVerificationCode && <div className="flex items-center gap-2"><span className="font-mono font-bold text-blue-600">{req.nextVerificationCode}</span><button onClick={() => copyToClipboard(req.nextVerificationCode!)} className="p-1 hover:bg-gray-100 rounded transition-colors hover:text-blue-600"><Copy className="w-3.5 h-3.5" /></button></div>}</td></tr>))}</tbody></table>
-                </div>
-              </section>
+               </section>
             </div>
           )}
-        </>
+        </div>
       )}
     </Layout>
   );
