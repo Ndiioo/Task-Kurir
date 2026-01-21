@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { sheetService } from './services/sheetService';
-import { AppState, User, Role, Task, Attendance } from './types';
+import { AppState, User, Task, Attendance } from './types';
 import TaskCard from './components/TaskCard';
 import AttendanceTable from './components/AttendanceTable';
 import { LogIn, LogOut, ClipboardList, Calendar, Loader2, AlertCircle, LayoutDashboard, RefreshCw, Filter, Search, X } from 'lucide-react';
@@ -133,9 +133,6 @@ const App: React.FC = () => {
     }
     if (filters.hub !== 'all') {
       filtered = filtered.filter(t => t.hub === filters.hub);
-    }
-    if (filters.courier !== 'all') {
-      filtered = filtered.filter(t => t.name === filters.courier);
     }
     if (filters.search && activeTab === 'tasks') {
       const searchLower = filters.search.toLowerCase();
