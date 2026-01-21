@@ -1,0 +1,5 @@
+{
+  "name": "Your Task",
+  "description": "A comprehensive task management and operation scheduling application integrated with Google Sheets as a cloud database for couriers and operations staff.",
+  "requestFramePermissions": []
+}
