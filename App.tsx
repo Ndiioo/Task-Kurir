@@ -4,7 +4,7 @@ import { sheetService } from './services/sheetService';
 import { AppState, User, Role, Task, Attendance } from './types';
 import TaskCard from './components/TaskCard';
 import AttendanceTable from './components/AttendanceTable';
-import { LogIn, LogOut, ClipboardList, Calendar, Loader2, AlertCircle, LayoutDashboard, RefreshCw, Filter, Search, X, Clock } from 'lucide-react';
+import { LogIn, LogOut, ClipboardList, Calendar, Loader2, AlertCircle, LayoutDashboard, RefreshCw, Filter, Search, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
@@ -80,7 +80,7 @@ const App: React.FC = () => {
         if (hasTask) {
           performLogin({ username: kurirMatch.username, name: kurirMatch.name, role: 'kurir' });
         } else {
-          throw new Error(`Username '${inputUsername}' terdaftar tapi tidak ditemukan tugas aktif di kolom V.`);
+          throw new Error(`Username '${inputUsername}' terdaftar tapi tidak ditemukan tugas aktif.`);
         }
         return;
       }
@@ -264,7 +264,7 @@ const App: React.FC = () => {
         <div className="mb-3 flex flex-col md:flex-row md:items-end justify-between gap-2 px-1">
           <div className="animate-in slide-in-from-left duration-300">
             <p className="text-blue-600 font-black text-[7px] uppercase tracking-widest mb-0">OVERVIEW</p>
-            <h2 className="text-[14px] sm:text-4xl font-black text-gray-900 leading-tight uppercase">Halo, {state.user.name}!</h2>
+            <h2 className="text-[14px] sm:text-2xl font-black text-gray-900 leading-tight uppercase">Halo, {state.user.name}!</h2>
             <div className="flex items-center gap-1 mt-0">
               <span className={`px-1 rounded-[2px] text-[6px] font-black uppercase tracking-tighter ${
                 state.user.role === 'kurir' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
