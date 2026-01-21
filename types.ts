@@ -21,6 +21,7 @@ export interface Task {
   fmsId: string;
   courierId: string;
   name: string;
+  operatorName?: string;
   hub: string;
   taskId: string;
   packageCount: number;

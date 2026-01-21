@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task } from '../types';
-import { ChevronDown, ChevronUp, Copy, CheckCircle, Package, MapPin, User, Hash } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, CheckCircle, Package, MapPin, User, Hash, ShieldCheck } from 'lucide-react';
 import QRCodeDisplay from './QRCodeDisplay';
 
 interface TaskCardProps {
@@ -57,7 +57,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ fmsId, tasks, onFinishTask }) => {
             {tasks.map((task) => (
               <div key={task.taskId} className="bg-white p-2 sm:p-5 rounded-md sm:rounded-2xl border border-gray-200 shadow-xs">
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-1.5 sm:gap-4 mb-2 sm:mb-5">
-                  <div className="space-y-0.5 sm:space-y-2">
+                  <div className="space-y-1 sm:space-y-2">
                     <div className="flex items-center gap-1">
                       <Hash size={10} className="text-gray-400 sm:w-4 sm:h-4" />
                       <div>
@@ -65,6 +65,15 @@ const TaskCard: React.FC<TaskCardProps> = ({ fmsId, tasks, onFinishTask }) => {
                         <span className="font-mono text-[9px] sm:text-base font-bold text-gray-800">{task.taskId}</span>
                       </div>
                     </div>
+                    {task.operatorName && (
+                      <div className="flex items-center gap-1">
+                        <ShieldCheck size={10} className="text-blue-400 sm:w-4 sm:h-4" />
+                        <div>
+                          <p className="text-[5px] sm:text-[10px] font-black text-gray-400 uppercase tracking-tighter">OPERATOR</p>
+                          <span className="text-[9px] sm:text-sm font-bold text-gray-700 uppercase">{task.operatorName}</span>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1">
                       <Package size={10} className="text-orange-400 sm:w-4 sm:h-4" />
                       <div>
