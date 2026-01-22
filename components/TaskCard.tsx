@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task } from '../types';
-import { ChevronDown, ChevronUp, Copy, CheckCircle, Package, MapPin, User, Hash, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, CheckCircle, Package, MapPin, User, Hash, ShieldCheck, Calendar } from 'lucide-react';
 import QRCodeDisplay from './QRCodeDisplay';
 
 interface TaskCardProps {
@@ -25,7 +25,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ fmsId, tasks, onFinishTask }) => {
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex-1 min-w-0">
-          <div className="mb-0.5">
+          <div className="mb-0.5 flex items-center gap-2">
             <span className="bg-blue-50 text-blue-600 text-[6px] sm:text-[10px] font-black px-1 sm:px-2.5 py-0 sm:py-1 rounded-[2px] sm:rounded-lg uppercase tracking-tight border border-blue-100/50">
               FMS: {fmsId}
             </span>
@@ -63,6 +63,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ fmsId, tasks, onFinishTask }) => {
                       <div>
                         <p className="text-[5px] sm:text-[10px] font-black text-gray-400 uppercase tracking-tighter">TASK ID</p>
                         <span className="font-mono text-[9px] sm:text-base font-bold text-gray-800">{task.taskId}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Calendar size={10} className="text-emerald-500 sm:w-4 sm:h-4" />
+                      <div>
+                        <p className="text-[5px] sm:text-[10px] font-black text-gray-400 uppercase tracking-tighter">TANGGAL</p>
+                        <span className="text-[9px] sm:text-sm font-bold text-gray-700">{task.date || '-'}</span>
                       </div>
                     </div>
                     {task.operatorName && (

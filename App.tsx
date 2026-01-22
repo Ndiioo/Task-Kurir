@@ -3,7 +3,7 @@ import { sheetService } from './services/sheetService';
 import { AppState, User, Task, Attendance } from './types';
 import TaskCard from './components/TaskCard';
 import AttendanceTable from './components/AttendanceTable';
-import { LogIn, LogOut, ClipboardList, Calendar, Loader2, AlertCircle, LayoutDashboard, RefreshCw, Filter, Search, X, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { LogIn, LogOut, ClipboardList, Calendar, Loader2, AlertCircle, LayoutDashboard, RefreshCw, Filter, Search, X, Info, ChevronDown, ChevronUp, Warehouse, Package, BarChart3 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
@@ -15,7 +15,7 @@ const App: React.FC = () => {
   });
 
   const [loginForm, setLoginForm] = useState({ username: '' });
-  const [activeTab, setActiveTab] = useState<'tasks' | 'ops'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'ops' | 'station'>('tasks');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   
   const [filters, setFilters] = useState({
@@ -120,6 +120,19 @@ const App: React.FC = () => {
     const shifts = Array.from(new Set(state.attendance.map(a => a.shift))).filter(Boolean).sort();
     return { hubs, shifts };
   }, [state.tasks, state.attendance]);
+
+  const stationStats = useMemo(() => {
+    const stats: Record<string, { hub: string, totalPackages: number, totalTasks: number }> = {};
+    state.tasks.forEach(task => {
+      const hubName = task.hub || 'TIDAK TERDEFINISI';
+      if (!stats[hubName]) {
+        stats[hubName] = { hub: hubName, totalPackages: 0, totalTasks: 0 };
+      }
+      stats[hubName].totalPackages += task.packageCount;
+      stats[hubName].totalTasks += 1;
+    });
+    return Object.values(stats).sort((a, b) => b.totalPackages - a.totalPackages);
+  }, [state.tasks]);
 
   const groupedTasks = useMemo(() => {
     if (!state.user) return [];
@@ -293,18 +306,26 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex p-1 bg-gray-200/50 rounded-xl w-full sm:w-fit backdrop-blur-sm">
+          <div className="flex p-1 bg-gray-200/50 rounded-xl w-full sm:w-fit backdrop-blur-sm overflow-x-auto no-scrollbar">
              <button 
               onClick={() => { setActiveTab('tasks'); resetFilters(); }}
-              className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-6 py-2 rounded-lg font-black transition-all text-xs sm:text-sm ${
+              className={`flex items-center justify-center gap-2 flex-shrink-0 px-4 sm:px-6 py-2 rounded-lg font-black transition-all text-xs sm:text-sm ${
                 activeTab === 'tasks' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <ClipboardList size={16} className="sm:w-[18px] sm:h-[18px]" /> TUGAS
             </button>
             <button 
+              onClick={() => { setActiveTab('station'); resetFilters(); }}
+              className={`flex items-center justify-center gap-2 flex-shrink-0 px-4 sm:px-6 py-2 rounded-lg font-black transition-all text-xs sm:text-sm ${
+                activeTab === 'station' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={16} className="sm:w-[18px] sm:h-[18px]" /> STATION
+            </button>
+            <button 
               onClick={() => { setActiveTab('ops'); resetFilters(); }}
-              className={`flex items-center justify-center gap-2 flex-1 sm:flex-none px-6 py-2 rounded-lg font-black transition-all text-xs sm:text-sm ${
+              className={`flex items-center justify-center gap-2 flex-shrink-0 px-4 sm:px-6 py-2 rounded-lg font-black transition-all text-xs sm:text-sm ${
                 activeTab === 'ops' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -393,6 +414,52 @@ const App: React.FC = () => {
               </div>
             )}
 
+            {activeTab === 'station' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {stationStats.map((stat) => (
+                    <div key={stat.hub} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <Warehouse size={64} className="text-blue-600" />
+                      </div>
+                      <div className="relative z-10">
+                        <p className="text-blue-600 font-black text-[10px] uppercase tracking-widest mb-1">STATION / HUB</p>
+                        <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter mb-4">{stat.hub}</h3>
+                        
+                        <div className="flex items-end justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-1.5 text-gray-400 mb-0.5">
+                              <Package size={14} className="text-orange-500" />
+                              <span className="text-[10px] font-black uppercase tracking-tight">Total Paket</span>
+                            </div>
+                            <p className="text-3xl font-black text-gray-900 leading-none">{stat.totalPackages.toLocaleString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center justify-end gap-1.5 text-gray-400 mb-0.5">
+                              <ClipboardList size={14} className="text-blue-500" />
+                              <span className="text-[10px] font-black uppercase tracking-tight">Task Aktif</span>
+                            </div>
+                            <p className="text-xl font-black text-gray-700 leading-none">{stat.totalTasks.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-5 h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-600 rounded-full" 
+                          style={{ width: `${Math.min(100, (stat.totalPackages / 500) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {stationStats.length === 0 && (
+                   <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center">
+                    <p className="text-gray-400 font-black text-xs uppercase italic">Data Station Belum Tersedia</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'ops' && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm transition-all duration-300">
@@ -452,6 +519,15 @@ const App: React.FC = () => {
         >
           <ClipboardList size={20} />
           <span className="text-[8px] font-black mt-1 uppercase tracking-tighter">Task List</span>
+        </button>
+        <button 
+          onClick={() => { setActiveTab('station'); setIsFilterOpen(false); resetFilters(); }}
+          className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
+            activeTab === 'station' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 translate-y-[-4px]' : 'text-gray-400'
+          }`}
+        >
+          <BarChart3 size={20} />
+          <span className="text-[8px] font-black mt-1 uppercase tracking-tighter">Station</span>
         </button>
         <button 
           onClick={() => { setActiveTab('ops'); setIsFilterOpen(false); resetFilters(); }}

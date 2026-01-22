@@ -26,6 +26,7 @@ export interface Task {
   taskId: string;
   packageCount: number;
   status?: 'pending' | 'finished';
+  date: string;
 }
 
 export interface Attendance {

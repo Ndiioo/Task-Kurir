@@ -73,6 +73,7 @@ export const sheetService = {
         operatorName: cleanString(row[11]), // Mengambil dari Kolom L (Index 11)
         fmsId: cleanString(row[2]),
         packageCount: parseInt(row[9]) || 0,
+        date: cleanString(row[12]), // Mengambil dari Kolom M (Index 12)
         hub: cleanString(row[19]),
         name: cleanString(row[20]),
         courierId: cleanString(row[21]),
